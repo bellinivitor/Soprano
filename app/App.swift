@@ -581,21 +581,42 @@ struct MenuContent: View {
 
 // MARK: - UI: janela de configuracao da curva
 
+enum ConfigTab: String, CaseIterable, Identifiable {
+    case curva = "Curva"
+    case apps = "Aplicativos"
+    case barra = "Barra"
+    case sobre = "Sobre"
+    var id: String { rawValue }
+}
+
 struct ConfigWindow: View {
     @ObservedObject var controller: FanController
+    @State private var tab: ConfigTab = .curva
 
     var body: some View {
-        TabView {
-            CurveTab(controller: controller)
-                .tabItem { Label("Curva", systemImage: "chart.xyaxis.line") }
-            AppRulesTab(controller: controller)
-                .tabItem { Label("Aplicativos", systemImage: "gamecontroller") }
-            MenuBarPrefsTab(controller: controller)
-                .tabItem { Label("Barra de menu", systemImage: "menubar.rectangle") }
-            AboutTab()
-                .tabItem { Label("Sobre", systemImage: "info.circle") }
+        VStack(spacing: 0) {
+            // Segmented fixo no topo — sempre visivel, sem menu escondido.
+            Picker("", selection: $tab) {
+                ForEach(ConfigTab.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+
+            Divider()
+
+            Group {
+                switch tab {
+                case .curva: CurveTab(controller: controller)
+                case .apps:  AppRulesTab(controller: controller)
+                case .barra: MenuBarPrefsTab(controller: controller)
+                case .sobre: AboutTab()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 500, height: 440)
+        .frame(width: 520, height: 460)
     }
 }
 
