@@ -87,6 +87,18 @@ adicione o `Soprano.app` aos **Itens de Início de Sessão** (Ajustes do Sistema
 
 ---
 
+## Atualizar
+
+Novas versões saem aqui no GitHub — acompanhe o repositório. Para atualizar:
+
+```bash
+cd Soprano && git pull && ./build.sh
+```
+
+(O link e essa instrução também estão dentro do app, na aba **Sobre**.)
+
+---
+
 ## Desinstalar
 
 ```bash

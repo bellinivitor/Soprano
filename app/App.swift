@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 // Escrita:  chama /usr/local/bin/smcfan via `sudo -n` (regra NOPASSWD do install.sh).
 
 let smcfanPath = "/usr/local/bin/smcfan"
+let appVersion = "1.0"
 
 // MARK: - Modelo de um fan
 
@@ -591,8 +592,55 @@ struct ConfigWindow: View {
                 .tabItem { Label("Aplicativos", systemImage: "gamecontroller") }
             MenuBarPrefsTab(controller: controller)
                 .tabItem { Label("Barra de menu", systemImage: "menubar.rectangle") }
+            AboutTab()
+                .tabItem { Label("Sobre", systemImage: "info.circle") }
         }
         .frame(width: 500, height: 440)
+    }
+}
+
+// Aba: sobre o app, link do repositorio e como atualizar.
+struct AboutTab: View {
+    private let repoURL = URL(string: "https://github.com/bellinivitor/Soprano")!
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Image(systemName: "fanblades.fill").font(.system(size: 34))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Soprano").font(.title).bold()
+                    Text("versão \(appVersion)").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+
+            Text("Controle das ventoinhas do Mac na barra de menu — slider, curva por temperatura e regras por aplicativo.")
+                .font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Divider()
+
+            HStack(spacing: 6) {
+                Image(systemName: "link").foregroundStyle(.secondary)
+                Link("github.com/bellinivitor/Soprano", destination: repoURL)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Atualizações saem no GitHub — acompanhe o repositório. Para atualizar:")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("git pull && ./build.sh")
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .padding(6)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.06)))
+            }
+
+            Spacer()
+            Text("Feito por Vitor Bellini · Licença MIT")
+                .font(.caption2).foregroundStyle(.secondary)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }
 
