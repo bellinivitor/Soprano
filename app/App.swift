@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 // Soprano — controle de fan estilo "barra de volume" na menu bar, com
 // leitura de temperatura do CPU e curva automatica temp -> rotacao.
@@ -71,6 +72,16 @@ enum FanMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+// MARK: - Regra por aplicativo
+
+/// Quando o app de `bundleID` estiver aberto, forca o fan em `percent`% do range.
+struct AppRule: Codable, Identifiable {
+    var bundleID: String
+    var name: String
+    var percent: Int          // 0-100
+    var id: String { bundleID }
+}
+
 // MARK: - ViewModel
 
 @MainActor
@@ -79,6 +90,27 @@ final class FanController: ObservableObject {
     @Published var cpuTemp: Double?
     @Published var lastError: String?
     @Published var conflictWarning: String?
+    @Published var activeAppRuleName: String?   // regra por app em vigor agora
+
+    @Published var appRules: [AppRule] = [] {
+        didSet { persistRules() }
+    }
+
+    // Preferencias de exibicao na barra de menu (o icone fica sempre).
+    @Published var showRpmInMenuBar: Bool = true {
+        didSet { defaults.set(showRpmInMenuBar, forKey: "showRpm") }
+    }
+    @Published var showTempInMenuBar: Bool = true {
+        didSet { defaults.set(showTempInMenuBar, forKey: "showTemp") }
+    }
+
+    /// Texto ao lado do icone na barra (respeita as preferencias).
+    var menuBarText: String {
+        var parts: [String] = []
+        if showRpmInMenuBar, let a = fans.first?.actual, a > 0 { parts.append("\(a)") }
+        if showTempInMenuBar { parts.append(tempLabel(cpuTemp)) }
+        return parts.joined(separator: " · ")
+    }
 
     @Published var autoCurveEnabled: Bool {
         didSet { defaults.set(autoCurveEnabled, forKey: "autoCurveEnabled") }
@@ -102,6 +134,10 @@ final class FanController: ObservableObject {
     // (a mesma estrategia do Macs Fan Control: nunca soltar o controle).
     private var manualTarget: Int?
 
+    // Regra por app em vigor (bundleID) e ultima rotacao aplicada por ela.
+    private var appOverrideBundle: String?
+    private var lastAppRpm: Int?
+
     init() {
         smc = try? SMC()
         autoCurveEnabled = defaults.bool(forKey: "autoCurveEnabled")
@@ -112,6 +148,12 @@ final class FanController: ObservableObject {
         } else {
             curve = Curve.default
         }
+        if let data = defaults.data(forKey: "appRules"),
+           let saved = try? JSONDecoder().decode([AppRule].self, from: data) {
+            appRules = saved
+        }
+        if defaults.object(forKey: "showRpm") != nil { showRpmInMenuBar = defaults.bool(forKey: "showRpm") }
+        if defaults.object(forKey: "showTemp") != nil { showTempInMenuBar = defaults.bool(forKey: "showTemp") }
 
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
@@ -125,7 +167,41 @@ final class FanController: ObservableObject {
         }
     }
 
+    private func persistRules() {
+        if let data = try? JSONEncoder().encode(appRules) {
+            defaults.set(data, forKey: "appRules")
+        }
+    }
+
     func resetCurve() { curve = Curve.default }
+
+    // MARK: - Regras por app
+
+    func addRule(bundleID: String, name: String, percent: Int = 90) {
+        guard !bundleID.isEmpty else { return }
+        if let i = appRules.firstIndex(where: { $0.bundleID == bundleID }) {
+            appRules[i].percent = percent      // ja existe: so atualiza
+        } else {
+            appRules.append(AppRule(bundleID: bundleID, name: name, percent: percent))
+        }
+    }
+
+    func removeRule(_ rule: AppRule) {
+        appRules.removeAll { $0.bundleID == rule.bundleID }
+    }
+
+    /// Converte % (0-100) na rotacao dentro do min-max real do fan.
+    private func percentToRpm(_ pct: Int, _ fan: Fan) -> Int {
+        let p = Double(min(max(pct, 0), 100)) / 100.0
+        return Int((Double(fan.min) + p * Double(fan.max - fan.min)).rounded())
+    }
+
+    /// Regra cujo app esta aberto agora; se houver varias, a de maior %.
+    private func runningRule() -> AppRule? {
+        guard !appRules.isEmpty else { return nil }
+        let running = Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier })
+        return appRules.filter { running.contains($0.bundleID) }.max { $0.percent < $1.percent }
+    }
 
     // MARK: leitura periodica
 
@@ -150,13 +226,46 @@ final class FanController: ObservableObject {
             let t = await tempReader.average()
             await MainActor.run {
                 self.cpuTemp = t
-                if self.autoCurveEnabled {
-                    self.applyCurveIfNeeded()
-                } else if let mt = self.manualTarget {
-                    // Keep-alive: reafirma o alvo manual pra segurar o modo forcado.
-                    self.run(["set", "0", "\(mt)"])
+                self.applyControl()
+            }
+        }
+    }
+
+    /// Decide o que aplicar a cada ciclo, por prioridade:
+    /// 1) regra por app aberto  2) curva  3) manual (keep-alive)  4) automatico.
+    private func applyControl() {
+        guard let fan = fans.first else { return }
+
+        // 1) Regra por aplicativo tem prioridade absoluta enquanto o app roda.
+        if let rule = runningRule() {
+            let rpm = min(max(percentToRpm(rule.percent, fan), fan.min), fan.max)
+            activeAppRuleName = "\(rule.name) · \(rule.percent)%"
+            appOverrideBundle = rule.bundleID
+            if lastAppRpm != rpm || !fan.forced {
+                lastAppRpm = rpm
+                run(["set", "\(fan.id)", "\(rpm)"])
+                if let i = fans.firstIndex(where: { $0.id == fan.id }) {
+                    fans[i].target = rpm; fans[i].forced = true
                 }
             }
+            return
+        }
+
+        // O app fechou: encerra o override e restaura o modo base uma vez.
+        if appOverrideBundle != nil {
+            appOverrideBundle = nil
+            lastAppRpm = nil
+            activeAppRuleName = nil
+            if !autoCurveEnabled && manualTarget == nil {
+                setSystemAuto(fan.id)     // sem modo base -> devolve ao macOS
+            }
+        }
+
+        // 2/3/4) modo base normal.
+        if autoCurveEnabled {
+            applyCurveIfNeeded()
+        } else if let mt = manualTarget {
+            run(["set", "\(fan.id)", "\(mt)"])   // keep-alive manual
         }
     }
 
@@ -389,6 +498,12 @@ struct MenuContent: View {
             .labelsHidden()
             .frame(maxWidth: .infinity)
 
+            if let active = controller.activeAppRuleName {
+                Label("Regra ativa: \(active)", systemImage: "gamecontroller.fill")
+                    .font(.caption).foregroundStyle(.green)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             if let warn = controller.conflictWarning {
                 Divider()
                 Label(warn, systemImage: "exclamationmark.triangle.fill")
@@ -416,7 +531,7 @@ struct MenuContent: View {
                     Image(systemName: "slider.horizontal.3")
                 }
                 .buttonStyle(.borderless)
-                .help("Configurar curva")
+                .help("Configurações")
             }
         }
         .padding(14)
@@ -438,7 +553,48 @@ struct MenuContent: View {
 struct ConfigWindow: View {
     @ObservedObject var controller: FanController
 
-    // Faixas de edicao. rpmMax vem do fan (fallback 6600).
+    var body: some View {
+        TabView {
+            CurveTab(controller: controller)
+                .tabItem { Label("Curva", systemImage: "chart.xyaxis.line") }
+            AppRulesTab(controller: controller)
+                .tabItem { Label("Aplicativos", systemImage: "gamecontroller") }
+            MenuBarPrefsTab(controller: controller)
+                .tabItem { Label("Barra de menu", systemImage: "menubar.rectangle") }
+        }
+        .frame(width: 500, height: 440)
+    }
+}
+
+// Aba: o que mostrar ao lado do icone na barra de menu.
+struct MenuBarPrefsTab: View {
+    @ObservedObject var controller: FanController
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Barra de menu").font(.title2).bold()
+            Text("Escolha o que aparece ao lado do ícone da ventoinha.")
+                .font(.caption).foregroundStyle(.secondary)
+
+            Toggle("Mostrar rotação (rpm)", isOn: $controller.showRpmInMenuBar)
+                .toggleStyle(.switch)
+            Toggle("Mostrar temperatura", isOn: $controller.showTempInMenuBar)
+                .toggleStyle(.switch)
+
+            Text("O ícone 🌀 continua sempre visível. Se desligar os dois, fica só o ícone.")
+                .font(.caption2).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+}
+
+// Aba: curva automatica por temperatura.
+struct CurveTab: View {
+    @ObservedObject var controller: FanController
+
     private var rpmMax: Double { Double(controller.fans.first?.max ?? 6600) }
     private var rpmMin: Double { Double(controller.fans.first?.min ?? 1200) }
 
@@ -506,7 +662,106 @@ struct ConfigWindow: View {
             }
         }
         .padding(18)
-        .frame(width: 460, height: 380)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+}
+
+// Aba: regras "quando o app X abrir, poe o fan em Y%".
+struct AppRulesTab: View {
+    @ObservedObject var controller: FanController
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Regras por aplicativo").font(.title2).bold()
+            Text("Quando o app abrir, o fan vai pro % definido; ao fechar, volta pro modo anterior. Se vários estiverem abertos, vale o maior %.")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if controller.appRules.isEmpty {
+                Spacer()
+                Text("Nenhuma regra ainda.\nAdicione um app abaixo.")
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                Spacer()
+            } else {
+                ScrollView {
+                    VStack(spacing: 10) {
+                        ForEach($controller.appRules) { $rule in
+                            HStack(spacing: 10) {
+                                Text(rule.name).lineLimit(1)
+                                    .frame(width: 150, alignment: .leading)
+                                Slider(value: Binding(get: { Double(rule.percent) },
+                                                      set: { rule.percent = Int($0) }),
+                                       in: 0...100, step: 5)
+                                Text("\(rule.percent)%").monospacedDigit()
+                                    .frame(width: 44, alignment: .trailing)
+                                Button {
+                                    controller.removeRule(rule)
+                                } label: { Image(systemName: "minus.circle.fill") }
+                                    .buttonStyle(.borderless)
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: .infinity)
+            }
+
+            Divider()
+            HStack {
+                Menu {
+                    let apps = runningApps()
+                    if apps.isEmpty {
+                        Text("Nenhum app aberto")
+                    } else {
+                        ForEach(apps, id: \.bundleID) { app in
+                            Button(app.name) { controller.addRule(bundleID: app.bundleID, name: app.name) }
+                        }
+                    }
+                } label: { Label("Adicionar app aberto", systemImage: "plus") }
+                .frame(width: 210)
+
+                Button {
+                    if let app = browseForApp() {
+                        controller.addRule(bundleID: app.bundleID, name: app.name)
+                    }
+                } label: { Label("Procurar…", systemImage: "folder") }
+                Spacer()
+            }
+
+            if let active = controller.activeAppRuleName {
+                Label("Ativa agora: \(active)", systemImage: "gamecontroller.fill")
+                    .font(.caption).foregroundStyle(.green)
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    /// Apps "normais" abertos agora (com Dock/janela), ordenados por nome.
+    private func runningApps() -> [(bundleID: String, name: String)] {
+        NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular }
+            .compactMap { app -> (String, String)? in
+                guard let b = app.bundleIdentifier, let n = app.localizedName else { return nil }
+                return (b, n)
+            }
+            .sorted { $0.1.localizedCaseInsensitiveCompare($1.1) == .orderedAscending }
+            .map { (bundleID: $0.0, name: $0.1) }
+    }
+
+    /// Seletor de .app na pasta Aplicativos.
+    private func browseForApp() -> (bundleID: String, name: String)? {
+        let panel = NSOpenPanel()
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.allowedContentTypes = [.application]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == NSApplication.ModalResponse.OK, let url = panel.url else { return nil }
+        let name = url.deletingPathExtension().lastPathComponent
+        let bid = Bundle(url: url)?.bundleIdentifier ?? ""
+        return (bundleID: bid, name: name)
     }
 }
 
@@ -520,13 +775,12 @@ struct SopranoApp: App {
         MenuBarExtra {
             MenuContent(controller: controller)
         } label: {
-            let rpm = controller.fans.first?.actual ?? 0
             Image(systemName: "fanblades.fill")
-            if rpm > 0 { Text("\(rpm) · \(tempLabel(controller.cpuTemp))") }
+            if !controller.menuBarText.isEmpty { Text(controller.menuBarText) }
         }
         .menuBarExtraStyle(.window)
 
-        Window("Configurar curva", id: "config") {
+        Window("Soprano — Configurações", id: "config") {
             ConfigWindow(controller: controller)
         }
         .windowResizability(.contentSize)

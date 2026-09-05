@@ -64,9 +64,15 @@ adicione o `Soprano.app` aos **Itens de Início de Sessão** (Ajustes do Sistema
   - **Automático** — devolve o fan ao controle térmico do macOS.
   - **Manual** — mantém a rotação do slider.
   - **Curva** — ajusta a rotação automaticamente conforme a temperatura do CPU.
-- **Configurar curva** (ícone 🎚️, ao lado do "Sair"): abre a janela para editar os
-  pontos temperatura → rotação, adicionar/remover pontos e **resetar para o padrão**.
 - **Temperatura**: média dos sensores de die do CPU, com cor (verde/laranja/vermelho).
+- **Configurações** (ícone 🎚️, ao lado do "Sair") — abre uma janela com abas:
+  - **Curva** — edita os pontos temperatura → rotação, adiciona/remove pontos e
+    **reseta para o padrão**.
+  - **Aplicativos** — regras **por app**: quando o app abrir (ex.: um jogo), o fan vai
+    pro **%** definido; ao fechar, volta pro modo anterior. Se vários estiverem abertos,
+    vale o maior %. Dá pra escolher entre os apps abertos ou procurar no `/Applications`.
+  - **Barra de menu** — liga/desliga o que aparece ao lado do ícone (**rotação** e/ou
+    **temperatura**).
 
 ---
 
