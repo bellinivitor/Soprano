@@ -1,0 +1,8 @@
+# Artefatos de build (o usuario gera com ./build.sh)
+build/
+
+# macOS
+.DS_Store
+
+# binario compilado do CLI (gerado pelo build.sh em build/)
+smcfan/smcfan
