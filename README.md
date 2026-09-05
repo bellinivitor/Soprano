@@ -1,126 +1,177 @@
 # 🎐 Soprano
 
-Controle das ventoinhas do Mac direto na barra de menu — estilo "barra de volume".
-Um slider pra subir/descer a rotação, uma curva automática por temperatura e leitura
-ao vivo de rotação e temperatura do CPU.
-
-Feito e testado em **MacBook Pro M4 (Apple Silicon), macOS 26**.
+**Controle o cooler do seu Mac como se fosse o volume.** O Soprano mora na barra de
+menu (lá em cima, perto do relógio) e deixa você deixar o Mac **mais silencioso** ou
+**mais gelado** com um slider — além de mostrar a rotação e a temperatura em tempo real.
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="Soprano na barra de menu" width="360">
+  <img src="docs/screenshot.png" alt="O Soprano aberto na barra de menu do Mac" width="360">
 </p>
+
+> [!WARNING]
+> **Mexer no cooler pode superaquecer o Mac.** Se você segurar a rotação baixa
+> enquanto o Mac trabalha pesado (jogo, edição de vídeo, exportação), o calor sobe,
+> o desempenho cai sozinho e, no limite, o Mac desliga pra se proteger. **Na dúvida,
+> use o modo Automático** — ele devolve o controle ao próprio macOS. Você assume o
+> volante por conta e risco.
 
 ---
 
-## Requisitos
+## O que é isso, em português claro
 
-- Mac com **Apple Silicon** (M1/M2/M3/M4).
-- **Xcode Command Line Tools** (fornece o `swiftc`). Se não tiver:
-  ```bash
-  xcode-select --install
-  ```
-- Permissão de administrador (o controle do fan exige root — veja abaixo).
+Todo Mac tem um **cooler** (ventoinha) que gira mais rápido pra esfriar quando o
+computador esquenta — é aquele barulhinho de vento. Normalmente quem decide a
+velocidade é o próprio macOS, e você não tem escolha.
+
+O **Soprano** te dá esse controle: um slider igualzinho ao de volume, do 🐢 (silencioso)
+ao 🐇 (turbinado). Serve pra, por exemplo:
+
+- **Silêncio** numa call ou de madrugada — segurar o cooler baixo.
+- **Frescor** num jogo ou render pesado — mandar pro máximo antes de esquentar.
+- **Piloto automático inteligente** — deixar o Soprano acelerar sozinho conforme a
+  temperatura sobe.
+
+---
+
+## O que ele faz
+
+- **🎚️ Slider de rotação.** Arraste e o cooler responde na hora, como o volume.
+- **🌡️ Temperatura e rotação ao vivo.** Aparecem na barra de menu e no painel, com
+  cor (verde tranquilo → laranja → vermelho quente).
+- **🤖 Três modos, um toque:**
+  - **Automático** — o macOS cuida de tudo (o jeito seguro).
+  - **Manual** — fica na rotação que você escolheu.
+  - **Curva** — sobe a rotação conforme a temperatura, seguindo pontos que você define
+    (ex.: “a 75 °C, vai a 4.400 rpm”).
+- **🎮 Regras por aplicativo.** Escolha um app — digamos, um jogo — e diga “quando ele
+  abrir, cooler a 90%”. O Soprano aplica sozinho ao abrir e volta ao normal ao fechar.
+  Se vários apps com regra estiverem abertos, vale o de maior porcentagem.
+- **👀 Barra de menu do seu jeito.** Ligue ou desligue a rotação e a temperatura ao
+  lado do ícone.
+
+---
+
+## Funciona no meu Mac?
+
+O Soprano é pra **Macs com chip Apple** (M1, M2, M3 ou M4 — de 2020 pra cá).
+
+Pra conferir: menu  (canto superior esquerdo) → **Sobre este Mac**. Se aparecer algo
+como “Chip Apple M2”, é compatível. Se disser “Intel”, este app não é pra você.
 
 ---
 
 ## Instalar
 
-Clone o repositório e rode:
+> [!NOTE]
+> Ainda não existe um instalador de clique único. A instalação é pelo **Terminal** —
+> um app que já vem no Mac (procure por “Terminal” no Spotlight, com ⌘ + espaço).
+> É só **copiar e colar** os comandos abaixo, um bloco de cada vez.
+
+**1. Ferramentas da Apple** (uma vez na vida). Cola no Terminal e segue as instruções
+na tela:
+
+```bash
+xcode-select --install
+```
+
+**2. Baixar e montar o Soprano:**
 
 ```bash
 git clone https://github.com/bellinivitor/Soprano.git
 cd Soprano
-./build.sh && ./install.sh
+./build.sh
 ```
 
-- `build.sh` — compila o CLI `smcfan` e monta o `Soprano.app` (não precisa de senha).
-- `install.sh` — copia o `smcfan` para `/usr/local/bin` e cria uma regra `sudoers`
-  que permite ao app acionar **apenas** esse binário sem pedir senha a cada ajuste.
-  **Pede sua senha uma única vez.**
+**3. Ativar o controle do cooler:**
 
-> Por que root? Ajustar a rotação significa escrever nas chaves do SMC
-> (System Management Controller), o que exige privilégio de administrador.
-> A leitura (rotação/temperatura) não precisa.
+```bash
+./install.sh
+```
 
----
+> [!IMPORTANT]
+> Esse passo vai **pedir a senha do seu Mac** — é normal e acontece **uma vez só**.
+> Mexer na velocidade do cooler exige permissão de administrador; a senha serve só
+> pra liberar isso. **Ler** temperatura e rotação não precisa de senha.
 
-## Abrir
+**4. Abrir:**
 
 ```bash
 open build/Soprano.app
 ```
 
-O ícone 🌀 aparece na **barra de menu** (canto superior direito), com a rotação e a
-temperatura ao lado. Clique nele para abrir o painel. Se quiser que ele abra sozinho,
-adicione o `Soprano.app` aos **Itens de Início de Sessão** (Ajustes do Sistema → Geral).
+Pronto — o ícone 🌀 aparece na barra de menu. Clique nele pra abrir o painel.
+
+> [!TIP]
+> Quer que ele abra sozinho quando você liga o Mac? Vá em **Ajustes do Sistema →
+> Geral → Itens de Início de Sessão** e adicione o `Soprano`.
 
 ---
 
-## Usar
+## Como usar no dia a dia
 
-- **Slider** (🐢 ↔ 🐇): arraste para definir a rotação. Ao arrastar, o app assume o
-  controle manual na hora.
-- **Modo** (segmented):
-  - **Automático** — devolve o fan ao controle térmico do macOS.
-  - **Manual** — mantém a rotação do slider.
-  - **Curva** — ajusta a rotação automaticamente conforme a temperatura do CPU.
-- **Temperatura**: média dos sensores de die do CPU, com cor (verde/laranja/vermelho).
-- **Configurações** (ícone 🎚️, ao lado do "Sair") — abre uma janela com abas:
-  - **Curva** — edita os pontos temperatura → rotação, adiciona/remove pontos e
-    **reseta para o padrão**.
-  - **Aplicativos** — regras **por app**: quando o app abrir (ex.: um jogo), o fan vai
-    pro **%** definido; ao fechar, volta pro modo anterior. Se vários estiverem abertos,
-    vale o maior %. Dá pra escolher entre os apps abertos ou procurar no `/Applications`.
-  - **Barra de menu** — liga/desliga o que aparece ao lado do ícone (**rotação** e/ou
-    **temperatura**).
+1. Clique no ícone 🌀 na barra de menu.
+2. **Arraste o slider** pra mudar a rotação (o Soprano assume o controle na hora), ou
+   escolha um **modo** (Automático / Manual / Curva).
+3. Pra ajustar a curva, as regras por app ou o que aparece na barra, abra as
+   **Configurações** (ícone 🎚️ ao lado do “Sair”).
+4. Terminou? Toque em **Automático** pra devolver o controle ao macOS.
 
 ---
 
-## ⚠️ Importante
+## Segurança em primeiro lugar
 
-- **Não rode junto com o Macs Fan Control** (ou outro controlador de fan). Dois
-  controladores brigando pelo SMC travam a firmware do fan. O app avisa em laranja se
-  detectar o Macs Fan Control aberto. Se o daemon dele estiver ativo em background,
-  desinstale-o.
-- **Segurança térmica**: forçar rotação baixa sob carga pesada pode superaquecer, já
-  que você tira o gerenciamento do macOS. Na dúvida, use **Automático**.
+> [!WARNING]
+> **Cooler baixo + Mac trabalhando pesado = superaquecimento.** Forçar a rotação pra
+> baixo tira o gerenciamento térmico das mãos do macOS. Sob carga, isso pode fazer o
+> Mac esquentar demais, perder desempenho ou desligar sozinho. Use o **Automático**
+> sempre que não tiver certeza — ele é o padrão seguro.
+
+> [!IMPORTANT]
+> **Use só um controlador de cooler por vez.** Se você tiver o **Macs Fan Control**
+> (ou parecido) instalado, feche/desinstale antes — dois programas disputando o cooler
+> ao mesmo tempo travam ele e você precisa reiniciar o Mac. O Soprano avisa em laranja
+> quando detecta o Macs Fan Control aberto.
 
 ---
 
 ## Atualizar
 
-Novas versões saem aqui no GitHub — acompanhe o repositório. Para atualizar:
+Versões novas saem aqui no GitHub. Pra pegar a mais recente, cole no Terminal:
 
 ```bash
 cd Soprano && git pull && ./build.sh
 ```
 
-(O link e essa instrução também estão dentro do app, na aba **Sobre**.)
+O link e essa dica também estão dentro do app, na aba **Sobre**.
 
 ---
 
 ## Desinstalar
 
-```bash
-./uninstall.sh
-```
+Remove tudo (devolve o cooler ao automático, apaga o app e as permissões):
 
-Fecha o app, devolve o fan ao automático e remove o binário `smcfan`, a regra de
-sudo, o `Soprano.app` e as preferências salvas.
+```bash
+cd Soprano && ./uninstall.sh
+```
 
 ---
 
-## Como funciona
+## Para quem programa
 
-- `smcfan/` — CLI mínimo em Swift que fala com o **AppleSMC** via IOKit
-  (`read`, `temp`, `set <i> <rpm>`, `auto [<i>]`).
-- `app/App.swift` — app SwiftUI de barra de menu. Lê o SMC direto (sem root) e, para
-  escrever, chama `/usr/local/bin/smcfan` via `sudo -n` (regra instalada pelo
-  `install.sh`). Enquanto controla, reafirma o alvo periodicamente ("keep-alive")
-  para manter o modo forçado estável.
+- **`smcfan/`** — CLI enxuto em Swift que conversa com o **AppleSMC** via IOKit
+  (`read`, `temp`, `set <i> <rpm>`, `auto [<i>]`). Precisa de root pra escrever.
+- **`app/App.swift`** — app SwiftUI de barra de menu (`MenuBarExtra`). Lê o SMC
+  direto (sem root) e, pra escrever, chama `/usr/local/bin/smcfan` via `sudo -n`,
+  liberado por uma regra `sudoers` que o `install.sh` cria **só** pra esse binário.
+  Enquanto controla, reafirma o alvo a cada ciclo (“keep-alive”) pra manter o modo
+  forçado estável e evitar o estado travado do SMC.
+- **Build**: `swiftc` das Command Line Tools; sem Xcode completo, sem dependências
+  externas. `./build.sh` compila e monta o `.app`.
+
+Feito e testado em **MacBook Pro M4 (Apple Silicon), macOS 26**.
 
 ---
 
 ## Licença
 
-MIT — veja [LICENSE](LICENSE).
+MIT — veja [LICENSE](LICENSE). Feito por Vitor Bellini.
