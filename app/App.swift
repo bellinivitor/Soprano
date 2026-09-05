@@ -67,7 +67,7 @@ actor TempReader {
 // MARK: - Modo de operacao
 
 enum FanMode: String, CaseIterable, Identifiable {
-    case system = "Automatico"
+    case system = "Automático"
     case manual = "Manual"
     case curve  = "Curva"
     var id: String { rawValue }
@@ -229,7 +229,7 @@ final class FanController: ObservableObject {
                 || name.localizedCaseInsensitiveContains("fan control")
         }
         conflictWarning = clash.map {
-            "\($0.localizedName ?? "Outro controlador") esta aberto — feche-o: dois controladores brigando travam o fan."
+            "\($0.localizedName ?? "Outro controlador") está aberto. Feche-o: dois controladores brigando travam o fan."
         }
     }
 
@@ -295,7 +295,7 @@ final class FanController: ObservableObject {
 
     /// Le o estado atual dos fans direto do SMC.
     func refresh() {
-        guard let smc else { lastError = "SMC indisponivel"; return }
+        guard let smc else { lastError = "SMC indisponível"; return }
         let count = Int((try? smc.read("FNum").double) ?? 1)
         var result: [Fan] = []
         for i in 0..<count {
@@ -431,7 +431,7 @@ final class FanController: ObservableObject {
                 lastError = nil
             }
         } catch {
-            lastError = "nao foi possivel executar o smcfan: \(error.localizedDescription)"
+            lastError = "não foi possível executar o smcfan: \(error.localizedDescription)"
         }
     }
 }
@@ -439,8 +439,8 @@ final class FanController: ObservableObject {
 // MARK: - Formatacao
 
 func tempLabel(_ t: Double?) -> String {
-    guard let t else { return "-- C" }
-    return String(format: "%.0f C", t)
+    guard let t else { return "-- °C" }
+    return String(format: "%.0f °C", t)
 }
 
 // MARK: - UI: menu principal
@@ -476,7 +476,7 @@ struct FanRow: View {
 
             HStack {
                 Text(controller.autoCurveEnabled ? "Curva: alvo \(fan.target) rpm"
-                     : (fan.forced ? "Forcado: \(fan.target) rpm" : "Automatico (macOS)"))
+                     : (fan.forced ? "Forçado: \(fan.target) rpm" : "Automático (macOS)"))
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
             }
@@ -549,7 +549,7 @@ struct MenuContent: View {
             }
 
             Divider()
-            Text("Cuidado: rotacao baixa sob carga pode superaquecer.")
+            Text("Cuidado: rotação baixa sob carga pode superaquecer.")
                 .font(.caption2).foregroundStyle(.secondary)
             HStack {
                 Button("Sair") { NSApplication.shared.terminate(nil) }
@@ -634,7 +634,7 @@ struct AboutTab: View {
                 }
             }
 
-            Text("Controle das ventoinhas do Mac na barra de menu — slider, curva por temperatura e regras por aplicativo.")
+            Text("Controle das ventoinhas do Mac na barra de menu: slider, curva por temperatura e regras por aplicativo.")
                 .font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -646,7 +646,7 @@ struct AboutTab: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("Atualizações saem no GitHub — acompanhe o repositório. Para atualizar:")
+                Text("Atualizações saem no GitHub. Acompanhe o repositório e, para atualizar, rode:")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Text("git pull && ./build.sh")
@@ -699,14 +699,14 @@ struct CurveTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Curva automatica").font(.title2).bold()
-            Text("Para cada temperatura do CPU, defina a rotacao-alvo. Entre os pontos o valor e interpolado.")
+            Text("Curva automática").font(.title2).bold()
+            Text("Para cada temperatura do CPU, defina a rotação-alvo. Entre os pontos o valor é interpolado.")
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack {
                 Text("Temperatura").frame(width: 130, alignment: .leading)
-                Text("Rotacao").frame(maxWidth: .infinity, alignment: .leading)
+                Text("Rotação").frame(maxWidth: .infinity, alignment: .leading)
                 Spacer().frame(width: 30)
             }
             .font(.caption).foregroundStyle(.secondary)
@@ -716,7 +716,7 @@ struct CurveTab: View {
                     ForEach($controller.curve) { $point in
                         HStack {
                             Stepper(value: $point.temp, in: 20...105, step: 1) {
-                                Text("\(point.temp) C").monospacedDigit()
+                                Text("\(point.temp) °C").monospacedDigit()
                             }
                             .frame(width: 130, alignment: .leading)
 
@@ -747,7 +747,7 @@ struct CurveTab: View {
 
                 Button(role: .destructive) {
                     controller.resetCurve()
-                } label: { Label("Resetar para o padrao", systemImage: "arrow.counterclockwise") }
+                } label: { Label("Resetar para o padrão", systemImage: "arrow.counterclockwise") }
             }
 
             Divider()
@@ -755,7 +755,7 @@ struct CurveTab: View {
                 Image(systemName: controller.autoCurveEnabled ? "checkmark.circle.fill" : "pause.circle")
                     .foregroundStyle(controller.autoCurveEnabled ? .green : .secondary)
                 Text(controller.autoCurveEnabled
-                     ? "Curva ativa — temp atual \(tempLabel(controller.cpuTemp))"
+                     ? "Curva ativa · temp atual \(tempLabel(controller.cpuTemp))"
                      : "Curva desligada (ative no menu da barra)")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -890,7 +890,7 @@ struct SopranoApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Window("Soprano — Configurações", id: "config") {
+        Window("Configurações do Soprano", id: "config") {
             ConfigWindow(controller: controller)
         }
         .windowResizability(.contentSize)

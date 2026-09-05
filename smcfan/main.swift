@@ -59,16 +59,16 @@ func cmdSet(_ smc: SMC, index: Int, rpm: Int) {
             // A firmware recusa assumir o manual quando o fan esta em repouso
             // profundo (mode=3, fan desligado a frio). Sinaliza com codigo 3.
             if mode == 3 {
-                FileHandle.standardError.write(Data("erro: fan em repouso (mode=3) — so da pra assumir com o fan girando\n".utf8))
+                FileHandle.standardError.write(Data("erro: fan em repouso (mode=3): só dá pra assumir com o fan girando\n".utf8))
                 exit(3)
             }
-            fail("nao foi possivel forcar o modo do fan \(index): \(error)")
+            fail("não foi possível forçar o modo do fan \(index): \(error)")
         }
     }
     do {
         try smc.writeFloat("F\(index)Tg", Float(target))     // rotacao-alvo
     } catch {
-        fail("nao foi possivel ajustar a rotacao do fan \(index): \(error)")
+        fail("não foi possível ajustar a rotação do fan \(index): \(error)")
     }
     print("fan \(index) -> \(Int(target)) rpm")
 }
@@ -79,10 +79,10 @@ func cmdAuto(_ smc: SMC, index: Int?) {
         let mode = Int((try? smc.read("F\(i)Md").double) ?? 0)
         if mode != 0 {
             do { try smc.writeUInt8("F\(i)Md", 0) }          // volta ao automatico
-            catch { fail("nao foi possivel devolver o fan \(i) ao automatico (precisa de root?): \(error)") }
+            catch { fail("não foi possível devolver o fan \(i) ao automático (precisa de root?): \(error)") }
         }
     }
-    print("fan(s) \(indices.map(String.init).joined(separator: ",")) em modo automatico")
+    print("fan(s) \(indices.map(String.init).joined(separator: ",")) em modo automático")
 }
 
 // --- dispatch ---
@@ -94,7 +94,7 @@ guard let cmd = args.first else {
 
 let smc: SMC
 do { smc = try SMC() }
-catch { fail("SMC indisponivel: \(error)") }
+catch { fail("SMC indisponível: \(error)") }
 
 switch cmd {
 case "read":
@@ -112,7 +112,7 @@ case "temp":
     if let avg = smc.cpuTemperature() {
         print(String(format: "%.1f", avg))
     } else {
-        fail("nao foi possivel ler a temperatura do CPU")
+        fail("não foi possível ler a temperatura do CPU")
     }
 default:
     fail("comando desconhecido: \(cmd)")
