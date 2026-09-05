@@ -96,6 +96,11 @@ final class FanController: ObservableObject {
         didSet { persistRules() }
     }
 
+    // Liga/desliga o sistema de regras por app como um todo.
+    @Published var rulesEnabled: Bool = true {
+        didSet { defaults.set(rulesEnabled, forKey: "rulesEnabled") }
+    }
+
     // Preferencias de exibicao na barra de menu (o icone fica sempre).
     @Published var showRpmInMenuBar: Bool = true {
         didSet { defaults.set(showRpmInMenuBar, forKey: "showRpm") }
@@ -137,6 +142,9 @@ final class FanController: ObservableObject {
     // Regra por app em vigor (bundleID) e ultima rotacao aplicada por ela.
     private var appOverrideBundle: String?
     private var lastAppRpm: Int?
+    // Regras dispensadas por acao manual do usuario (enquanto o app segue aberto).
+    // Ao fechar o app, sai da lista e a regra volta a valer no proximo lancamento.
+    private var dismissedRules: Set<String> = []
 
     init() {
         smc = try? SMC()
@@ -154,6 +162,7 @@ final class FanController: ObservableObject {
         }
         if defaults.object(forKey: "showRpm") != nil { showRpmInMenuBar = defaults.bool(forKey: "showRpm") }
         if defaults.object(forKey: "showTemp") != nil { showTempInMenuBar = defaults.bool(forKey: "showTemp") }
+        if defaults.object(forKey: "rulesEnabled") != nil { rulesEnabled = defaults.bool(forKey: "rulesEnabled") }
 
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
@@ -196,11 +205,15 @@ final class FanController: ObservableObject {
         return Int((Double(fan.min) + p * Double(fan.max - fan.min)).rounded())
     }
 
-    /// Regra cujo app esta aberto agora; se houver varias, a de maior %.
-    private func runningRule() -> AppRule? {
-        guard !appRules.isEmpty else { return nil }
-        let running = Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier })
-        return appRules.filter { running.contains($0.bundleID) }.max { $0.percent < $1.percent }
+    /// Dispensa a regra ativa quando o usuario assume o controle manualmente.
+    /// A regra volta a valer quando o app for fechado e reaberto.
+    private func dismissActiveRule() {
+        if let b = appOverrideBundle {
+            dismissedRules.insert(b)
+            appOverrideBundle = nil
+            lastAppRpm = nil
+            activeAppRuleName = nil
+        }
     }
 
     // MARK: leitura periodica
@@ -236,8 +249,18 @@ final class FanController: ObservableObject {
     private func applyControl() {
         guard let fan = fans.first else { return }
 
-        // 1) Regra por aplicativo tem prioridade absoluta enquanto o app roda.
-        if let rule = runningRule() {
+        let running = Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier })
+        // Apps dispensados que ja fecharam saem da lista (reabrir volta a valer).
+        dismissedRules = dismissedRules.intersection(running)
+
+        // 1) Regra por aplicativo tem prioridade enquanto o app roda (se habilitado
+        //    e nao dispensada manualmente). Entre varias, vale a de maior %.
+        let candidate = rulesEnabled
+            ? appRules.filter { running.contains($0.bundleID) && !dismissedRules.contains($0.bundleID) }
+                      .max { $0.percent < $1.percent }
+            : nil
+
+        if let rule = candidate {
             let rpm = min(max(percentToRpm(rule.percent, fan), fan.min), fan.max)
             activeAppRuleName = "\(rule.name) · \(rule.percent)%"
             appOverrideBundle = rule.bundleID
@@ -251,7 +274,7 @@ final class FanController: ObservableObject {
             return
         }
 
-        // O app fechou: encerra o override e restaura o modo base uma vez.
+        // Sem regra ativa: encerra o override e restaura o modo base uma vez.
         if appOverrideBundle != nil {
             appOverrideBundle = nil
             lastAppRpm = nil
@@ -309,6 +332,7 @@ final class FanController: ObservableObject {
 
     /// Slider manual: desliga a curva e assume controle direto (e segura).
     func setTarget(_ rpm: Int, forFan index: Int) {
+        dismissActiveRule()      // acao manual dispensa a regra por app ativa
         autoCurveEnabled = false
         lastAutoRpm = nil
         manualTarget = rpm
@@ -330,6 +354,7 @@ final class FanController: ObservableObject {
     }
 
     func toggleAutoCurve(_ on: Bool) {
+        dismissActiveRule()      // acao manual dispensa a regra por app ativa
         autoCurveEnabled = on
         lastAutoRpm = nil
         manualTarget = nil
@@ -343,6 +368,7 @@ final class FanController: ObservableObject {
 
     /// Devolve o fan ao controle automatico do macOS e desliga a curva.
     func setSystemAuto(_ index: Int) {
+        dismissActiveRule()      // acao manual dispensa a regra por app ativa
         autoCurveEnabled = false
         lastAutoRpm = nil
         manualTarget = nil
@@ -499,9 +525,13 @@ struct MenuContent: View {
             .frame(maxWidth: .infinity)
 
             if let active = controller.activeAppRuleName {
-                Label("Regra ativa: \(active)", systemImage: "gamecontroller.fill")
-                    .font(.caption).foregroundStyle(.green)
-                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 6) {
+                    Image(systemName: "gamecontroller.fill")
+                    Text("Regra ativa: \(active)")
+                    Spacer()
+                }
+                .font(.caption).foregroundStyle(.green)
+                .fixedSize(horizontal: false, vertical: true)
             }
 
             if let warn = controller.conflictWarning {
@@ -672,10 +702,21 @@ struct AppRulesTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Regras por aplicativo").font(.title2).bold()
-            Text("Quando o app abrir, o fan vai pro % definido; ao fechar, volta pro modo anterior. Se vários estiverem abertos, vale o maior %.")
+            HStack {
+                Text("Regras por aplicativo").font(.title2).bold()
+                Spacer()
+                Toggle("", isOn: $controller.rulesEnabled)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+            }
+            Text("Quando o app abrir, o fan vai pro % definido; ao fechar, volta pro modo anterior. Se vários estiverem abertos, vale o maior %. Mexer no controle manualmente dispensa a regra até o app fechar e reabrir.")
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if !controller.rulesEnabled {
+                Label("Regras desativadas", systemImage: "pause.circle")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
 
             if controller.appRules.isEmpty {
                 Spacer()
