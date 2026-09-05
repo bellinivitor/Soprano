@@ -92,6 +92,10 @@ final class FanController: ObservableObject {
     @Published var lastError: String?
     @Published var conflictWarning: String?
     @Published var activeAppRuleName: String?   // regra por app em vigor agora
+    @Published var safetyActive = false          // protecao termica forcando o maximo
+
+    // Acima desta temperatura, o app forca o fan no maximo em qualquer modo.
+    static let safetyTemp = 95.0
 
     @Published var appRules: [AppRule] = [] {
         didSet { persistRules() }
@@ -268,9 +272,29 @@ final class FanController: ObservableObject {
     }
 
     /// Decide o que aplicar a cada ciclo, por prioridade:
-    /// 1) regra por app aberto  2) curva  3) manual (keep-alive)  4) automatico.
+    /// 0) PROTECAO TERMICA  1) regra por app  2) curva  3) manual  4) automatico.
     private func applyControl() {
         guard let fan = fans.first else { return }
+
+        // 0) FAILSAFE: acima do limite de seguranca, forca o maximo em QUALQUER
+        //    modo (inclusive Automatico). O macOS as vezes deixa o fan parado
+        //    mesmo muito quente; isto impede o Mac de cozinhar.
+        if let t = cpuTemp, t >= Self.safetyTemp {
+            safetyActive = true
+            if lastAppRpm != fan.max || !fan.forced {
+                lastAppRpm = fan.max
+                run(["set", "\(fan.id)", "\(fan.max)"])
+                if let i = fans.firstIndex(where: { $0.id == fan.id }) {
+                    fans[i].target = fan.max; fans[i].forced = true
+                }
+            }
+            return
+        }
+        if safetyActive {
+            // Saiu do perigo: zera o marcador para o modo base reassumir.
+            safetyActive = false
+            lastAppRpm = nil
+        }
 
         let running = Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier })
         // Apps dispensados que ja fecharam saem da lista (reabrir volta a valer).
@@ -546,6 +570,16 @@ struct MenuContent: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .frame(maxWidth: .infinity)
+
+            if controller.safetyActive {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                    Text("Proteção térmica: fan no máximo")
+                    Spacer()
+                }
+                .font(.caption).bold().foregroundStyle(.red)
+                .fixedSize(horizontal: false, vertical: true)
+            }
 
             if let active = controller.activeAppRuleName {
                 HStack(spacing: 6) {

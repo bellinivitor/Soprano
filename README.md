@@ -125,6 +125,12 @@ Pronto! O ícone 🌀 aparece na barra de menu. Clique nele pra abrir o painel.
 > pode fazer o Mac esquentar demais, perder desempenho ou desligar sozinho. Use o
 > **Automático** sempre que não tiver certeza. Ele é o padrão seguro.
 
+> [!NOTE]
+> **Proteção térmica embutida.** Se a temperatura passar de **95 °C**, o Soprano
+> força o cooler no **máximo** sozinho, em qualquer modo (inclusive Automático), e
+> mostra um aviso vermelho no painel. É uma rede de segurança, não um substituto do
+> bom senso: continue de olho sob carga pesada.
+
 > [!IMPORTANT]
 > **Use só um controlador de cooler por vez.** Se você tiver o **Macs Fan Control**
 > (ou parecido) instalado, feche ou desinstale antes. Dois programas disputando o
