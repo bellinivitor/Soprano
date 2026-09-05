@@ -110,6 +110,19 @@ final class FanController: ObservableObject {
         didSet { defaults.set(showTempInMenuBar, forKey: "showTemp") }
     }
 
+    // Intervalo de atualizacao (s). Limitado a uma faixa segura para nao
+    // martelar o SMC nem disparar escritas rapido demais quando controlando.
+    static let minRefresh = 1.0
+    static let maxRefresh = 5.0
+    @Published var refreshInterval: Double = 2.0 {
+        didSet {
+            let v = min(max(refreshInterval, Self.minRefresh), Self.maxRefresh)
+            if v != refreshInterval { refreshInterval = v; return }   // reentra ja travado
+            defaults.set(refreshInterval, forKey: "refreshInterval")
+            startTimer()
+        }
+    }
+
     /// Texto ao lado do icone na barra (respeita as preferencias).
     var menuBarText: String {
         var parts: [String] = []
@@ -164,9 +177,18 @@ final class FanController: ObservableObject {
         if defaults.object(forKey: "showRpm") != nil { showRpmInMenuBar = defaults.bool(forKey: "showRpm") }
         if defaults.object(forKey: "showTemp") != nil { showTempInMenuBar = defaults.bool(forKey: "showTemp") }
         if defaults.object(forKey: "rulesEnabled") != nil { rulesEnabled = defaults.bool(forKey: "rulesEnabled") }
+        if defaults.object(forKey: "refreshInterval") != nil {
+            refreshInterval = min(max(defaults.double(forKey: "refreshInterval"), Self.minRefresh), Self.maxRefresh)
+        }
 
         refresh()
-        timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        startTimer()
+    }
+
+    /// (Re)inicia o timer de leitura com o intervalo atual.
+    private func startTimer() {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
     }
@@ -683,6 +705,20 @@ struct MenuBarPrefsTab: View {
             Text("O ícone 🌀 continua sempre visível. Se desligar os dois, fica só o ícone.")
                 .font(.caption2).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Divider()
+
+            Text("Atualização das leituras").font(.headline)
+            HStack {
+                Slider(value: $controller.refreshInterval,
+                       in: FanController.minRefresh...FanController.maxRefresh, step: 0.5)
+                Text(String(format: "%.1f s", controller.refreshInterval))
+                    .monospacedDigit().frame(width: 52, alignment: .trailing)
+            }
+            Text("Com que frequência a rotação e a temperatura são relidas (mín. \(String(format: "%.0f", FanController.minRefresh)) s, por segurança).")
+                .font(.caption2).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
             Spacer()
         }
         .padding(18)
