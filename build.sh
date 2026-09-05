@@ -11,10 +11,13 @@ swiftc -O -import-objc-header smcfan/SMC.h smcfan/SMC.swift smcfan/main.swift \
 echo "==> compilando Soprano.app"
 APP="build/Soprano.app"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 swiftc -O -import-objc-header smcfan/SMC.h smcfan/SMC.swift app/App.swift \
     -o "$APP/Contents/MacOS/Soprano" -framework IOKit
+
+# Icone do app (Spotlight, Finder, Dock, etc.)
+cp icon/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -27,6 +30,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleVersion</key>         <string>1.0</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>
     <key>CFBundleExecutable</key>      <string>Soprano</string>
+    <key>CFBundleIconFile</key>        <string>AppIcon</string>
     <key>CFBundlePackageType</key>     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>  <string>13.0</string>
     <key>LSUIElement</key>             <true/>
