@@ -10,6 +10,11 @@ import UniformTypeIdentifiers
 let smcfanPath = "/usr/local/bin/smcfan"
 let appVersion = "0.1 beta"
 
+// Checagem de atualizacao via GitHub.
+let currentTag = "v0.1-beta"
+let repoTagsURL = "https://api.github.com/repos/bellinivitor/Soprano/tags"
+let repoReleasesURL = "https://github.com/bellinivitor/Soprano/releases"
+
 // MARK: - Modelo de um fan
 
 struct Fan: Identifiable {
@@ -93,6 +98,7 @@ final class FanController: ObservableObject {
     @Published var conflictWarning: String?
     @Published var activeAppRuleName: String?   // regra por app em vigor agora
     @Published var safetyActive = false          // protecao termica forcando o maximo
+    @Published var updateTag: String?            // tag mais recente no GitHub, se != atual
 
     // Acima desta temperatura, o app forca o fan no maximo em qualquer modo.
     static let safetyTemp = 100.0
@@ -187,6 +193,24 @@ final class FanController: ObservableObject {
 
         refresh()
         startTimer()
+        checkForUpdate()
+    }
+
+    /// Consulta as tags do repositorio no GitHub e sinaliza se a mais recente
+    /// for diferente da versao instalada.
+    func checkForUpdate() {
+        guard let url = URL(string: repoTagsURL) else { return }
+        var req = URLRequest(url: url, timeoutInterval: 8)
+        req.setValue("Soprano-app", forHTTPHeaderField: "User-Agent")
+        req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        URLSession.shared.dataTask(with: req) { [weak self] data, _, _ in
+            guard let data,
+                  let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+                  let latest = arr.first?["name"] as? String, !latest.isEmpty else { return }
+            Task { @MainActor in
+                self?.updateTag = (latest != currentTag) ? latest : nil
+            }
+        }.resume()
     }
 
     /// (Re)inicia o timer de leitura com o intervalo atual.
@@ -607,6 +631,15 @@ struct MenuContent: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            if let t = controller.updateTag {
+                Divider()
+                Link(destination: URL(string: repoReleasesURL)!) {
+                    Label("Nova versão disponível: \(t)", systemImage: "arrow.down.circle.fill")
+                        .font(.caption).bold()
+                }
+                .foregroundStyle(.orange)
+            }
+
             Divider()
             Text("Cuidado: rotação baixa sob carga pode superaquecer.")
                 .font(.caption2).foregroundStyle(.secondary)
@@ -670,7 +703,7 @@ struct ConfigWindow: View {
                 case .curva: CurveTab(controller: controller)
                 case .apps:  AppRulesTab(controller: controller)
                 case .barra: MenuBarPrefsTab(controller: controller)
-                case .sobre: AboutTab()
+                case .sobre: AboutTab(controller: controller)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -681,7 +714,9 @@ struct ConfigWindow: View {
 
 // Aba: sobre o app, link do repositorio e como atualizar.
 struct AboutTab: View {
+    @ObservedObject var controller: FanController
     private let repoURL = URL(string: "https://github.com/bellinivitor/Soprano")!
+    private let releasesURL = URL(string: repoReleasesURL)!
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -698,6 +733,17 @@ struct AboutTab: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             Divider()
+
+            // Status de atualizacao (checado no GitHub).
+            if let t = controller.updateTag {
+                Link(destination: releasesURL) {
+                    Label("Nova versão disponível: \(t)", systemImage: "arrow.down.circle.fill")
+                }
+                .foregroundStyle(.orange).bold()
+            } else {
+                Label("Você está na versão mais recente", systemImage: "checkmark.circle")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
 
             HStack(spacing: 6) {
                 Image(systemName: "link").foregroundStyle(.secondary)

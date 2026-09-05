@@ -147,7 +147,9 @@ Versões novas saem aqui no GitHub. Pra pegar a mais recente, cole no Terminal:
 cd Soprano && git pull && ./build.sh
 ```
 
-O link e essa dica também estão dentro do app, na aba **Sobre**.
+O próprio app **avisa quando há versão nova**: ele consulta as tags deste
+repositório e, se a mais recente for diferente da instalada, mostra um aviso
+laranja no menu e na aba **Sobre**, com link pra cá.
 
 ---
 
