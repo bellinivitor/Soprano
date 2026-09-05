@@ -8,7 +8,7 @@ import UniformTypeIdentifiers
 // Escrita:  chama /usr/local/bin/smcfan via `sudo -n` (regra NOPASSWD do install.sh).
 
 let smcfanPath = "/usr/local/bin/smcfan"
-let appVersion = "1.0"
+let appVersion = "0.1 beta"
 
 // MARK: - Modelo de um fan
 

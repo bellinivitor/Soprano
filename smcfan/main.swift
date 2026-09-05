@@ -114,6 +114,15 @@ case "temp":
     } else {
         fail("não foi possível ler a temperatura do CPU")
     }
+case "mode":
+    // Diagnostico: escreve SO o F0Md (sem tocar no alvo). Uso: smcfan mode <n>
+    guard args.count >= 2, let v = Int(args[1]) else { fail("uso: smcfan mode <n>") }
+    do {
+        try smc.writeUInt8("F0Md", UInt8(v))
+        print("F0Md -> \((try? smc.read("F0Md").double) ?? -1)")
+    } catch {
+        fail("não foi possível escrever F0Md=\(v): \(error)")
+    }
 default:
     fail("comando desconhecido: \(cmd)")
 }
