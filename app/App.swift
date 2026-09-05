@@ -95,7 +95,7 @@ final class FanController: ObservableObject {
     @Published var safetyActive = false          // protecao termica forcando o maximo
 
     // Acima desta temperatura, o app forca o fan no maximo em qualquer modo.
-    static let safetyTemp = 95.0
+    static let safetyTemp = 100.0
 
     @Published var appRules: [AppRule] = [] {
         didSet { persistRules() }
@@ -506,8 +506,9 @@ struct FanRow: View {
                 Image(systemName: "fanblades.fill")
                 Text(controller.fans.count > 1 ? "Fan \(fan.id + 1)" : "Fan").font(.headline)
                 Spacer()
-                Text("\(fan.actual) rpm")
+                Text(fan.actual > 0 ? "\(fan.actual) rpm" : "Desligado")
                     .font(.system(.body, design: .rounded)).bold()
+                    .foregroundStyle(fan.actual > 0 ? .primary : .secondary)
             }
 
             HStack(spacing: 8) {
