@@ -504,6 +504,8 @@ struct FanRow: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Image(systemName: "fanblades.fill")
+                    .foregroundStyle(fan.actual > 0 ? .primary : .secondary)
+                    .opacity(fan.actual > 0 ? 1 : 0.45)
                 Text(controller.fans.count > 1 ? "Fan \(fan.id + 1)" : "Fan").font(.headline)
                 Spacer()
                 Text(fan.actual > 0 ? "\(fan.actual) rpm" : "Desligado")
