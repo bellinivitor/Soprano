@@ -663,21 +663,22 @@ struct MenuContent: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if let t = controller.updateTag {
-                Divider()
-                Link(destination: URL(string: repoReleasesURL)!) {
-                    Label("Nova versão disponível: \(t)", systemImage: "arrow.down.circle.fill")
-                        .font(.caption).bold()
-                }
-                .foregroundStyle(.orange)
-            }
-
             Divider()
             Text("Cuidado: rotação baixa sob carga pode superaquecer.")
                 .font(.caption2).foregroundStyle(.secondary)
-            HStack {
+            HStack(spacing: 10) {
                 Button("Sair") { NSApplication.shared.terminate(nil) }
                     .keyboardShortcut("q")
+
+                if let t = controller.updateTag {
+                    Link(destination: URL(string: repoReleasesURL)!) {
+                        Label("Atualizar (\(t))", systemImage: "arrow.down.circle.fill")
+                            .font(.caption).bold()
+                    }
+                    .foregroundStyle(.orange)
+                    .help("Nova versão disponível no GitHub")
+                }
+
                 Spacer()
                 Button {
                     openWindow(id: "config")
