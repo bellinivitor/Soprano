@@ -771,8 +771,9 @@ struct HistoryChart: View {
                         var g = Path()
                         g.move(to: CGPoint(x: 0, y: yy)); g.addLine(to: CGPoint(x: size.width, y: yy))
                         ctx.stroke(g, with: .color(.primary.opacity(0.06)), lineWidth: 1)
+                        let labelY = min(max(yy - 6, 7), size.height - 7)   // nao corta nas bordas
                         ctx.draw(Text("\(mark)°").font(.system(size: 8)).foregroundStyle(.secondary),
-                                 at: CGPoint(x: 13, y: yy - 6))
+                                 at: CGPoint(x: 14, y: labelY))
                     }
 
                     guard samples.count > 1 else { return }
@@ -827,7 +828,7 @@ struct HistoryChart: View {
                     }
                 }
             }
-            .frame(height: 76)
+            .frame(height: 104)
             .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.04)))
         }
     }
