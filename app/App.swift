@@ -15,6 +15,26 @@ let currentTag = "v0.1.1-beta"
 let repoTagsURL = "https://api.github.com/repos/bellinivitor/Soprano/tags"
 let repoReleasesURL = "https://github.com/bellinivitor/Soprano/releases"
 
+/// Nucleo numerico de uma tag ("v0.1.1-beta" -> [0,1,1]), ignorando 'v' e o
+/// sufixo de pre-release ('-beta').
+func versionCore(_ tag: String) -> [Int] {
+    var s = tag
+    if s.hasPrefix("v") { s.removeFirst() }
+    if let dash = s.firstIndex(of: "-") { s = String(s[..<dash]) }
+    return s.split(separator: ".").map { Int($0) ?? 0 }
+}
+
+/// true se a versao `a` for mais nova que `b` (compara numero a numero).
+func isNewerVersion(_ a: String, than b: String) -> Bool {
+    let x = versionCore(a), y = versionCore(b)
+    for i in 0..<max(x.count, y.count) {
+        let xi = i < x.count ? x[i] : 0
+        let yi = i < y.count ? y[i] : 0
+        if xi != yi { return xi > yi }
+    }
+    return false   // cores iguais -> nao e "mais novo"
+}
+
 // MARK: - Modelo de um fan
 
 struct Fan: Identifiable {
@@ -205,10 +225,16 @@ final class FanController: ObservableObject {
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         URLSession.shared.dataTask(with: req) { [weak self] data, _, _ in
             guard let data,
-                  let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
-                  let latest = arr.first?["name"] as? String, !latest.isEmpty else { return }
+                  let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return }
+            let names = arr.compactMap { $0["name"] as? String }.filter { !$0.isEmpty }
+            // A tag mais alta entre todas (a API nao garante ordem de versao).
+            let newest = names.max { isNewerVersion($1, than: $0) }
             Task { @MainActor in
-                self?.updateTag = (latest != currentTag) ? latest : nil
+                if let newest, isNewerVersion(newest, than: currentTag) {
+                    self?.updateTag = newest
+                } else {
+                    self?.updateTag = nil
+                }
             }
         }.resume()
     }
