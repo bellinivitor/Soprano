@@ -49,7 +49,8 @@ ao 🐇 (turbinado). Serve pra, por exemplo:
   abrir, cooler a 90%”. O Soprano aplica sozinho ao abrir e volta ao normal ao fechar.
   Se vários apps com regra estiverem abertos, vale o de maior porcentagem.
 - **📈 Histórico dos últimos 10 minutos.** Um gráfico no painel mostra temperatura e
-  rotação ao longo do tempo, pra ver o comportamento sob carga.
+  rotação ao longo do tempo (passe o mouse pra ver os valores). Dá pra desligar em
+  Configurações → Geral, pra um menu mais compacto.
 - **⌨️ Atalho global (100%).** Defina uma combinação de teclas (sem atalho por
   padrão) que joga o cooler pra 100% de qualquer app; aperte de novo pra voltar ao
   Automático. Configurável em Configurações → Barra.

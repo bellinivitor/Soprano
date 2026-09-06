@@ -223,6 +223,9 @@ final class FanController: ObservableObject {
     @Published var showTempInMenuBar: Bool = true {
         didSet { defaults.set(showTempInMenuBar, forKey: "showTemp") }
     }
+    @Published var showHistoryChart: Bool = true {
+        didSet { defaults.set(showHistoryChart, forKey: "showHistory") }
+    }
 
     // Intervalo de atualizacao (s). Limitado a uma faixa segura para nao
     // martelar o SMC nem disparar escritas rapido demais quando controlando.
@@ -290,6 +293,7 @@ final class FanController: ObservableObject {
         }
         if defaults.object(forKey: "showRpm") != nil { showRpmInMenuBar = defaults.bool(forKey: "showRpm") }
         if defaults.object(forKey: "showTemp") != nil { showTempInMenuBar = defaults.bool(forKey: "showTemp") }
+        if defaults.object(forKey: "showHistory") != nil { showHistoryChart = defaults.bool(forKey: "showHistory") }
         if defaults.object(forKey: "rulesEnabled") != nil { rulesEnabled = defaults.bool(forKey: "rulesEnabled") }
         if defaults.object(forKey: "refreshInterval") != nil {
             refreshInterval = min(max(defaults.double(forKey: "refreshInterval"), Self.minRefresh), Self.maxRefresh)
@@ -909,7 +913,7 @@ struct MenuContent: View {
                 }
             }
 
-            if controller.history.count > 1, let fan = controller.fans.first {
+            if controller.showHistoryChart, controller.history.count > 1, let fan = controller.fans.first {
                 HistoryChart(samples: controller.history, fanMin: fan.min, fanMax: fan.max)
             }
 
@@ -999,6 +1003,7 @@ struct MenuContent: View {
 // MARK: - UI: janela de configuracao da curva
 
 enum ConfigTab: String, CaseIterable, Identifiable {
+    case geral = "Geral"
     case curva = "Curva"
     case apps = "Aplicativos"
     case barra = "Barra"
@@ -1025,6 +1030,7 @@ struct ConfigWindow: View {
 
             Group {
                 switch tab {
+                case .geral: GeneralTab(controller: controller)
                 case .curva: CurveTab(controller: controller)
                 case .apps:  AppRulesTab(controller: controller)
                 case .barra: MenuBarPrefsTab(controller: controller)
@@ -1033,7 +1039,7 @@ struct ConfigWindow: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 520, height: 560)
+        .frame(width: 560, height: 560)
     }
 }
 
@@ -1124,6 +1130,27 @@ struct MenuBarPrefsTab: View {
                     .monospacedDigit().frame(width: 52, alignment: .trailing)
             }
             Text("Com que frequência a rotação e a temperatura são relidas (mín. \(String(format: "%.0f", FanController.minRefresh)) s, por segurança).")
+                .font(.caption2).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer()
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+}
+
+// Aba: preferencias gerais (grafico, atalho global).
+struct GeneralTab: View {
+    @ObservedObject var controller: FanController
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Geral").font(.title2).bold()
+
+            Toggle("Mostrar gráfico de histórico", isOn: $controller.showHistoryChart)
+                .toggleStyle(.switch)
+            Text("Desligue para um menu mais compacto (esconde o gráfico dos últimos 10 min).")
                 .font(.caption2).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
