@@ -345,21 +345,35 @@ final class FanController: ObservableObject {
             return
         }
 
-        // Sem regra ativa: encerra o override e restaura o modo base uma vez.
+        // Sem regra ativa: encerra o override (o modo base reassume abaixo).
         if appOverrideBundle != nil {
             appOverrideBundle = nil
             lastAppRpm = nil
             activeAppRuleName = nil
-            if !autoCurveEnabled && manualTarget == nil {
-                setSystemAuto(fan.id)     // sem modo base -> devolve ao macOS
-            }
         }
 
-        // 2/3/4) modo base normal.
+        // 2/3/4) modo base.
         if autoCurveEnabled {
-            applyCurveIfNeeded()
+            applyCurveIfNeeded()                 // Curva: pontos do usuario
         } else if let mt = manualTarget {
-            run(["set", "\(fan.id)", "\(mt)"])   // keep-alive manual
+            run(["set", "\(fan.id)", "\(mt)"])   // Manual: keep-alive
+        } else {
+            applyAutoCurve(fan)                  // Automatico: curva segura do app
+        }
+    }
+
+    /// "Automatico": o proprio app gerencia com uma curva segura embutida.
+    /// (O automatico do macOS nesta maquina deixa o fan parado mesmo quente,
+    /// entao o app assume a responsabilidade e nunca prende o fan no minimo.)
+    private func applyAutoCurve(_ fan: Fan) {
+        guard let temp = cpuTemp else { return }
+        var rpm = Curve.rpm(for: temp, using: Curve.default)
+        rpm = min(max(rpm, fan.min), fan.max)
+        if fan.forced, let last = lastAutoRpm, abs(last - rpm) < 40 { return }
+        lastAutoRpm = rpm
+        run(["set", "\(fan.id)", "\(rpm)"])
+        if let i = fans.firstIndex(where: { $0.id == fan.id }) {
+            fans[i].target = rpm; fans[i].forced = true
         }
     }
 
@@ -437,33 +451,25 @@ final class FanController: ObservableObject {
         }
     }
 
-    /// Devolve o fan ao controle automatico do macOS e desliga a curva.
+    /// Entra no modo Automatico (curva segura gerenciada pelo app).
     func setSystemAuto(_ index: Int) {
         dismissActiveRule()      // acao manual dispensa a regra por app ativa
         autoCurveEnabled = false
-        lastAutoRpm = nil
         manualTarget = nil
-        run(["auto", "\(index)"])
-        if let idx = fans.firstIndex(where: { $0.id == index }) {
-            fans[idx].forced = false
-        }
+        lastAutoRpm = nil        // forca a curva automatica a reaplicar no proximo ciclo
     }
 
-    /// Devolve TODOS os fans ao controle automatico do macOS.
-    func setSystemAutoAll() {
-        let ids = fans.map(\.id)
-        for i in (ids.isEmpty ? [0] : ids) { setSystemAuto(i) }
-    }
+    func setSystemAutoAll() { setSystemAuto(0) }
 
-    /// Indica se algum fan esta sob controle do app (manual ou curva).
+    /// Indica se o app esta em manual ou curva (nao no automatico).
     var isControlling: Bool {
-        autoCurveEnabled || manualTarget != nil || fans.contains { $0.forced }
+        autoCurveEnabled || manualTarget != nil
     }
 
     /// Modo atual, derivado do estado.
     var mode: FanMode {
         if autoCurveEnabled { return .curve }
-        if manualTarget != nil || (fans.first?.forced ?? false) { return .manual }
+        if manualTarget != nil { return .manual }
         return .system
     }
 
@@ -548,8 +554,8 @@ struct FanRow: View {
             .padding(.top, 6)   // respiro entre o cabecalho e a barra
 
             HStack {
-                Text(controller.autoCurveEnabled ? "Curva: alvo \(fan.target) rpm"
-                     : (fan.forced ? "Forçado: \(fan.target) rpm" : "Automático (macOS)"))
+                Text(controller.mode == .curve ? "Curva: alvo \(fan.target) rpm"
+                     : (controller.mode == .manual ? "Forçado: \(fan.target) rpm" : "Automático (curva do app)"))
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
             }

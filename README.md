@@ -12,8 +12,8 @@ menu (lá em cima, perto do relógio) e deixa você deixar o Mac **mais silencio
 > **Mexer no cooler pode superaquecer o Mac.** Se você segurar a rotação baixa
 > enquanto o Mac trabalha pesado (jogo, edição de vídeo, exportação), o calor sobe,
 > o desempenho cai sozinho e, no limite, o Mac desliga pra se proteger. Na dúvida,
-> use o modo **Automático**: ele devolve o controle ao próprio macOS. Você assume o
-> volante por conta e risco.
+> use o modo **Automático**: o app mantém uma curva segura conforme a temperatura.
+> Nos modos Manual e Curva você assume o volante por conta e risco.
 
 ---
 
@@ -38,10 +38,13 @@ ao 🐇 (turbinado). Serve pra, por exemplo:
 - **🌡️ Temperatura e rotação ao vivo.** Aparecem na barra de menu e no painel, com
   cor (verde tranquilo, laranja, vermelho quente).
 - **🤖 Três modos, um toque:**
-  - **Automático**: o macOS cuida de tudo (o jeito seguro).
+  - **Automático**: o Soprano mantém uma curva segura conforme a temperatura
+    (deixe e esqueça). Neste Mac o automático do próprio macOS se mostrou pouco
+    confiável (deixava o cooler no mínimo mesmo muito quente), então o app assume
+    e nunca deixa o fan preso baixo sob calor.
   - **Manual**: fica na rotação que você escolheu.
-  - **Curva**: sobe a rotação conforme a temperatura, seguindo pontos que você define
-    (ex.: “a 75 °C, vai a 4.400 rpm”).
+  - **Curva**: como o Automático, mas com os pontos temperatura → rotação que
+    você mesmo define (ex.: “a 75 °C, vai a 4.400 rpm”).
 - **🎮 Regras por aplicativo.** Escolha um app (um jogo, por exemplo) e diga “quando ele
   abrir, cooler a 90%”. O Soprano aplica sozinho ao abrir e volta ao normal ao fechar.
   Se vários apps com regra estiverem abertos, vale o de maior porcentagem.
@@ -113,7 +116,7 @@ Pronto! O ícone 🌀 aparece na barra de menu. Clique nele pra abrir o painel.
    escolha um **modo** (Automático, Manual ou Curva).
 3. Pra ajustar a curva, as regras por app ou o que aparece na barra, abra as
    **Configurações** (ícone 🎚️ ao lado do “Sair”).
-4. Terminou? Toque em **Automático** pra devolver o controle ao macOS.
+4. Terminou? Toque em **Automático** pra o app cuidar sozinho por temperatura.
 
 ---
 
