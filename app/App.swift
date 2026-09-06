@@ -1,5 +1,81 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import Carbon.HIToolbox
+
+// MARK: - Historico
+
+/// Uma amostra do historico (para o grafico dos ultimos minutos).
+struct FanSample: Identifiable {
+    let id = UUID()
+    let time: Date
+    let temp: Double
+    let rpm: Int
+}
+
+// MARK: - Atalho global (Carbon, sem exigir permissao de acessibilidade)
+
+/// Registra um hotkey global e chama `action` quando pressionado.
+final class GlobalHotKey {
+    private var ref: EventHotKeyRef?
+    private var handlerRef: EventHandlerRef?
+    var action: (() -> Void)?
+
+    func register(keyCode: UInt32, modifiers: UInt32) {
+        unregister()
+        guard keyCode != 0 || modifiers != 0 else { return }
+
+        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
+                                 eventKind: UInt32(kEventHotKeyPressed))
+        InstallEventHandler(GetApplicationEventTarget(), { _, _, userData in
+            let me = Unmanaged<GlobalHotKey>.fromOpaque(userData!).takeUnretainedValue()
+            me.action?()
+            return noErr
+        }, 1, &spec, Unmanaged.passUnretained(self).toOpaque(), &handlerRef)
+
+        let hkID = EventHotKeyID(signature: OSType(0x53504E31), id: 1)  // 'SPN1'
+        RegisterEventHotKey(keyCode, modifiers, hkID, GetApplicationEventTarget(), 0, &ref)
+    }
+
+    func unregister() {
+        if let ref { UnregisterEventHotKey(ref); self.ref = nil }
+        if let handlerRef { RemoveEventHandler(handlerRef); self.handlerRef = nil }
+    }
+}
+
+/// Converte os modificadores do NSEvent para as flags do Carbon.
+func carbonModifiers(from flags: NSEvent.ModifierFlags) -> UInt32 {
+    var m: UInt32 = 0
+    if flags.contains(.command) { m |= UInt32(cmdKey) }
+    if flags.contains(.option)  { m |= UInt32(optionKey) }
+    if flags.contains(.control) { m |= UInt32(controlKey) }
+    if flags.contains(.shift)   { m |= UInt32(shiftKey) }
+    return m
+}
+
+/// Texto amigavel de um atalho (ex.: "⌃⌥⌘F").
+func hotKeyLabel(keyCode: UInt32, carbonMods: UInt32) -> String {
+    var s = ""
+    if carbonMods & UInt32(controlKey) != 0 { s += "⌃" }
+    if carbonMods & UInt32(optionKey)  != 0 { s += "⌥" }
+    if carbonMods & UInt32(shiftKey)   != 0 { s += "⇧" }
+    if carbonMods & UInt32(cmdKey)     != 0 { s += "⌘" }
+    s += keyName(for: keyCode)
+    return s
+}
+
+/// Nome legivel de uma tecla a partir do keyCode (Carbon).
+func keyName(for keyCode: UInt32) -> String {
+    let map: [UInt32: String] = [
+        0:"A",11:"B",8:"C",2:"D",14:"E",3:"F",5:"G",4:"H",34:"I",38:"J",40:"K",
+        37:"L",46:"M",45:"N",31:"O",35:"P",12:"Q",15:"R",1:"S",17:"T",32:"U",
+        9:"V",13:"W",7:"X",16:"Y",6:"Z",
+        18:"1",19:"2",20:"3",21:"4",23:"5",22:"6",26:"7",28:"8",25:"9",29:"0",
+        49:"Espaço",36:"↩",48:"⇥",53:"Esc",
+        122:"F1",120:"F2",99:"F3",118:"F4",96:"F5",97:"F6",98:"F7",100:"F8",
+        101:"F9",109:"F10",103:"F11",111:"F12"
+    ]
+    return map[keyCode] ?? "tecla \(keyCode)"
+}
 
 // Soprano — controle de fan estilo "barra de volume" na menu bar, com
 // leitura de temperatura do CPU e curva automatica temp -> rotacao.
@@ -119,6 +195,13 @@ final class FanController: ObservableObject {
     @Published var activeAppRuleName: String?   // regra por app em vigor agora
     @Published var safetyActive = false          // protecao termica forcando o maximo
     @Published var updateTag: String?            // tag mais recente no GitHub, se != atual
+    @Published var history: [FanSample] = []     // amostras dos ultimos ~10 min
+
+    // Atalho global (padrao: Ctrl+Opt+Cmd+F) que alterna 100% <-> Automatico.
+    @Published var hotKeyCode: UInt32 = 3         // 'F'
+    @Published var hotKeyMods: UInt32 = UInt32(controlKey | optionKey | cmdKey)
+    private let hotKey = GlobalHotKey()
+    static let historyWindow: TimeInterval = 600  // 10 minutos
 
     // Acima desta temperatura, o app forca o fan no maximo em qualquer modo.
     static let safetyTemp = 100.0
@@ -210,10 +293,46 @@ final class FanController: ObservableObject {
         if defaults.object(forKey: "refreshInterval") != nil {
             refreshInterval = min(max(defaults.double(forKey: "refreshInterval"), Self.minRefresh), Self.maxRefresh)
         }
+        if defaults.object(forKey: "hotKeyCode") != nil {
+            hotKeyCode = UInt32(defaults.integer(forKey: "hotKeyCode"))
+            hotKeyMods = UInt32(defaults.integer(forKey: "hotKeyMods"))
+        }
+
+        hotKey.action = { [weak self] in
+            Task { @MainActor in self?.boostToggle() }
+        }
+        hotKey.register(keyCode: hotKeyCode, modifiers: hotKeyMods)
 
         refresh()
         startTimer()
         checkForUpdate()
+    }
+
+    /// Redefine e re-registra o atalho global.
+    func updateHotKey(keyCode: UInt32, mods: UInt32) {
+        hotKeyCode = keyCode
+        hotKeyMods = mods
+        defaults.set(Int(keyCode), forKey: "hotKeyCode")
+        defaults.set(Int(mods), forKey: "hotKeyMods")
+        hotKey.register(keyCode: keyCode, modifiers: mods)
+    }
+
+    /// Guarda uma amostra e descarta o que passou da janela de 10 min.
+    private func recordSample() {
+        guard let temp = cpuTemp, let fan = fans.first else { return }
+        history.append(FanSample(time: Date(), temp: temp, rpm: fan.actual))
+        let cutoff = Date().addingTimeInterval(-Self.historyWindow)
+        history.removeAll { $0.time < cutoff }
+    }
+
+    /// Ação do atalho: alterna entre 100% (manual) e Automatico.
+    func boostToggle() {
+        guard let fan = fans.first else { return }
+        if mode == .manual && manualTarget == fan.max {
+            setSystemAuto(fan.id)          // ja estava no boost -> volta ao automatico
+        } else {
+            setTarget(fan.max, forFan: fan.id)   // liga o boost (100%)
+        }
     }
 
     /// Consulta as tags do repositorio no GitHub e sinaliza se a mais recente
@@ -316,6 +435,7 @@ final class FanController: ObservableObject {
             let t = await tempReader.average()
             await MainActor.run {
                 self.cpuTemp = t
+                self.recordSample()
                 self.applyControl()
             }
         }
@@ -598,6 +718,88 @@ struct FanRow: View {
     }
 }
 
+// Grafico dos ultimos 10 min: temperatura (laranja) e rotacao (azul).
+struct HistoryChart: View {
+    let samples: [FanSample]
+    let fanMin: Int
+    let fanMax: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 12) {
+                Label("Temp", systemImage: "circle.fill").foregroundStyle(.orange)
+                Label("Rotação", systemImage: "circle.fill").foregroundStyle(.blue)
+                Spacer()
+                Text("últimos 10 min").foregroundStyle(.secondary)
+            }
+            .font(.caption2)
+
+            Canvas { ctx, size in
+                guard samples.count > 1 else { return }
+                let w = FanController.historyWindow
+                let t0 = Date().addingTimeInterval(-w)
+                func x(_ d: Date) -> CGFloat { CGFloat(max(0, d.timeIntervalSince(t0)) / w) * size.width }
+                func yTemp(_ v: Double) -> CGFloat {
+                    let lo = 30.0, hi = 105.0
+                    return size.height * (1 - CGFloat((min(max(v, lo), hi) - lo) / (hi - lo)))
+                }
+                func yRpm(_ v: Int) -> CGFloat {
+                    let lo = Double(fanMin), hi = Double(max(fanMax, fanMin + 1))
+                    return size.height * (1 - CGFloat((min(max(Double(v), lo), hi) - lo) / (hi - lo)))
+                }
+                var tp = Path(), rp = Path()
+                for (i, s) in samples.enumerated() {
+                    let pt = CGPoint(x: x(s.time), y: yTemp(s.temp))
+                    let pr = CGPoint(x: x(s.time), y: yRpm(s.rpm))
+                    if i == 0 { tp.move(to: pt); rp.move(to: pr) }
+                    else { tp.addLine(to: pt); rp.addLine(to: pr) }
+                }
+                ctx.stroke(rp, with: .color(.blue.opacity(0.8)), lineWidth: 1.5)
+                ctx.stroke(tp, with: .color(.orange), lineWidth: 1.5)
+            }
+            .frame(height: 56)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))
+        }
+    }
+}
+
+// Campo que grava um atalho global (captura a proxima combinacao com modificador).
+struct HotKeyRecorderView: View {
+    @ObservedObject var controller: FanController
+    @State private var recording = false
+    @State private var monitor: Any?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(hotKeyLabel(keyCode: controller.hotKeyCode, carbonMods: controller.hotKeyMods))
+                .font(.system(.body, design: .rounded)).bold()
+                .frame(minWidth: 90, alignment: .leading)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.06)))
+            Button(recording ? "Pressione as teclas…" : "Alterar") { toggle() }
+            if recording {
+                Button("Cancelar") { stop() }.buttonStyle(.borderless)
+            }
+        }
+    }
+
+    private func toggle() {
+        if recording { stop(); return }
+        recording = true
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { event in
+            let mods = carbonModifiers(from: event.modifierFlags)
+            guard mods != 0 else { return event }   // exige ao menos um modificador
+            controller.updateHotKey(keyCode: UInt32(event.keyCode), mods: mods)
+            stop()
+            return nil
+        }
+    }
+    private func stop() {
+        recording = false
+        if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
+    }
+}
+
 struct MenuContent: View {
     @ObservedObject var controller: FanController
     @Environment(\.openWindow) private var openWindow
@@ -619,6 +821,10 @@ struct MenuContent: View {
                     FanRow(controller: controller, fan: fan)
                     if fan.id != controller.fans.last?.id { Divider() }
                 }
+            }
+
+            if controller.history.count > 1, let fan = controller.fans.first {
+                HistoryChart(samples: controller.history, fanMin: fan.min, fanMax: fan.max)
             }
 
             Divider()
@@ -834,6 +1040,14 @@ struct MenuBarPrefsTab: View {
             Text("Com que frequência a rotação e a temperatura são relidas (mín. \(String(format: "%.0f", FanController.minRefresh)) s, por segurança).")
                 .font(.caption2).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Divider()
+
+            Text("Atalho global (100%)").font(.headline)
+            Text("Funciona em qualquer app. Aperta: fan a 100%. Aperta de novo: volta ao Automático.")
+                .font(.caption2).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HotKeyRecorderView(controller: controller)
 
             Spacer()
         }

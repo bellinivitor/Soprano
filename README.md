@@ -48,6 +48,11 @@ ao 🐇 (turbinado). Serve pra, por exemplo:
 - **🎮 Regras por aplicativo.** Escolha um app (um jogo, por exemplo) e diga “quando ele
   abrir, cooler a 90%”. O Soprano aplica sozinho ao abrir e volta ao normal ao fechar.
   Se vários apps com regra estiverem abertos, vale o de maior porcentagem.
+- **📈 Histórico dos últimos 10 minutos.** Um gráfico no painel mostra temperatura e
+  rotação ao longo do tempo, pra ver o comportamento sob carga.
+- **⌨️ Atalho global (100%).** Uma combinação de teclas (configurável, padrão
+  ⌃⌥⌘F) que joga o cooler pra 100% de qualquer app; aperte de novo pra voltar ao
+  Automático.
 - **👀 Barra de menu do seu jeito.** Ligue ou desligue a rotação e a temperatura ao
   lado do ícone, e escolha de quanto em quanto tempo as leituras atualizam (1 a 5 s).
 
