@@ -719,89 +719,127 @@ struct FanRow: View {
     }
 }
 
-// Grafico dos ultimos 10 min: temperatura (area laranja) e rotacao (linha azul).
+// Grafico dos ultimos 10 min: temperatura (area laranja, escala fixa 30-105C
+// com faixa de perigo) e rotacao (linha azul). Valores aparecem ao passar o mouse.
 struct HistoryChart: View {
     let samples: [FanSample]
     let fanMin: Int
     let fanMax: Int
 
-    /// Escala adaptativa da temperatura: margem + span minimo p/ nao exagerar ruido.
-    private var tempRange: (lo: Double, hi: Double) {
-        let temps = samples.map(\.temp)
-        var lo = ((temps.min() ?? 40) - 4).rounded(.down)
-        var hi = ((temps.max() ?? 60) + 4).rounded(.up)
-        if hi - lo < 15 { let mid = (hi + lo) / 2; lo = mid - 7.5; hi = mid + 7.5 }
-        return (max(lo, 20), min(hi, 110))
-    }
+    @State private var hoverX: CGFloat?
+    @State private var hoverSample: FanSample?
+
+    private let tLo = 30.0
+    private let tHi = 105.0
+    private let window = FanController.historyWindow
 
     var body: some View {
-        let tLo = tempRange.lo, tHi = tempRange.hi
-
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 14) {
                 Label("Temperatura", systemImage: "circle.fill").foregroundStyle(.orange)
                 Label("Rotação", systemImage: "circle.fill").foregroundStyle(.blue)
                 Spacer()
-                Text("últimos 10 min").foregroundStyle(.secondary)
+                if let s = hoverSample {
+                    Text("\(Int(s.temp.rounded()))°C · \(s.rpm) rpm")
+                        .foregroundStyle(.primary).monospacedDigit()
+                } else {
+                    Text("últimos 10 min · passe o mouse").foregroundStyle(.secondary)
+                }
             }
             .font(.caption2)
 
-            Canvas { ctx, size in
-                let w = FanController.historyWindow
-                let t0 = Date().addingTimeInterval(-w)
-                func x(_ d: Date) -> CGFloat { CGFloat(max(0, d.timeIntervalSince(t0)) / w) * size.width }
-                func yTemp(_ v: Double) -> CGFloat {
-                    size.height * (1 - CGFloat((min(max(v, tLo), tHi) - tLo) / (tHi - tLo)))
-                }
-                func yRpm(_ v: Int) -> CGFloat {
-                    let lo = Double(fanMin), hi = Double(max(fanMax, fanMin + 1))
-                    return size.height * (1 - CGFloat((min(max(Double(v), lo), hi) - lo) / (hi - lo)))
-                }
+            GeometryReader { geo in
+                Canvas { ctx, size in
+                    let t0 = Date().addingTimeInterval(-window)
+                    func x(_ d: Date) -> CGFloat { CGFloat(max(0, d.timeIntervalSince(t0)) / window) * size.width }
+                    func yTemp(_ v: Double) -> CGFloat {
+                        size.height * (1 - CGFloat((min(max(v, tLo), tHi) - tLo) / (tHi - tLo)))
+                    }
+                    func yRpm(_ v: Int) -> CGFloat {
+                        let lo = Double(fanMin), hi = Double(max(fanMax, fanMin + 1))
+                        return size.height * (1 - CGFloat((min(max(Double(v), lo), hi) - lo) / (hi - lo)))
+                    }
 
-                // grade horizontal sutil
-                for f: CGFloat in [0, 0.5, 1] {
-                    var g = Path()
-                    g.move(to: CGPoint(x: 0, y: size.height * f))
-                    g.addLine(to: CGPoint(x: size.width, y: size.height * f))
-                    ctx.stroke(g, with: .color(.primary.opacity(0.06)), lineWidth: 1)
-                }
+                    // faixa de perigo (> 90 C)
+                    let dTop = yTemp(tHi), dBot = yTemp(90)
+                    ctx.fill(Path(CGRect(x: 0, y: dTop, width: size.width, height: dBot - dTop)),
+                             with: .color(.red.opacity(0.10)))
 
-                guard samples.count > 1 else { return }
+                    // grade + rotulos fixos de referencia
+                    for mark in [40, 60, 80, 100] {
+                        let yy = yTemp(Double(mark))
+                        var g = Path()
+                        g.move(to: CGPoint(x: 0, y: yy)); g.addLine(to: CGPoint(x: size.width, y: yy))
+                        ctx.stroke(g, with: .color(.primary.opacity(0.06)), lineWidth: 1)
+                        ctx.draw(Text("\(mark)°").font(.system(size: 8)).foregroundStyle(.secondary),
+                                 at: CGPoint(x: 13, y: yy - 6))
+                    }
 
-                // rotacao: linha fina de apoio
-                var rp = Path()
-                for (i, s) in samples.enumerated() {
-                    let p = CGPoint(x: x(s.time), y: yRpm(s.rpm))
-                    if i == 0 { rp.move(to: p) } else { rp.addLine(to: p) }
-                }
-                ctx.stroke(rp, with: .color(.blue.opacity(0.55)),
-                           style: StrokeStyle(lineWidth: 1.2, lineJoin: .round))
+                    guard samples.count > 1 else { return }
 
-                // temperatura: area com gradiente + linha (protagonista)
-                var line = Path(), area = Path()
-                area.move(to: CGPoint(x: x(samples[0].time), y: size.height))
-                for (i, s) in samples.enumerated() {
-                    let p = CGPoint(x: x(s.time), y: yTemp(s.temp))
-                    if i == 0 { line.move(to: p) } else { line.addLine(to: p) }
-                    area.addLine(to: p)
+                    // rotacao: linha fina de apoio
+                    var rp = Path()
+                    for (i, s) in samples.enumerated() {
+                        let p = CGPoint(x: x(s.time), y: yRpm(s.rpm))
+                        if i == 0 { rp.move(to: p) } else { rp.addLine(to: p) }
+                    }
+                    ctx.stroke(rp, with: .color(.blue.opacity(0.55)),
+                               style: StrokeStyle(lineWidth: 1.2, lineJoin: .round))
+
+                    // temperatura: area + linha
+                    var line = Path(), area = Path()
+                    area.move(to: CGPoint(x: x(samples[0].time), y: size.height))
+                    for (i, s) in samples.enumerated() {
+                        let p = CGPoint(x: x(s.time), y: yTemp(s.temp))
+                        if i == 0 { line.move(to: p) } else { line.addLine(to: p) }
+                        area.addLine(to: p)
+                    }
+                    area.addLine(to: CGPoint(x: x(samples[samples.count - 1].time), y: size.height))
+                    area.closeSubpath()
+                    ctx.fill(area, with: .linearGradient(
+                        Gradient(colors: [.orange.opacity(0.35), .orange.opacity(0.02)]),
+                        startPoint: CGPoint(x: 0, y: 0), endPoint: CGPoint(x: 0, y: size.height)))
+                    ctx.stroke(line, with: .color(.orange),
+                               style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+
+                    // guia de hover
+                    if let hx = hoverX, let s = hoverSample {
+                        var v = Path()
+                        v.move(to: CGPoint(x: hx, y: 0)); v.addLine(to: CGPoint(x: hx, y: size.height))
+                        ctx.stroke(v, with: .color(.primary.opacity(0.3)),
+                                   style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        let pT = CGPoint(x: hx, y: yTemp(s.temp))
+                        let pR = CGPoint(x: hx, y: yRpm(s.rpm))
+                        ctx.fill(Path(ellipseIn: CGRect(x: pR.x - 2.5, y: pR.y - 2.5, width: 5, height: 5)),
+                                 with: .color(.blue))
+                        ctx.fill(Path(ellipseIn: CGRect(x: pT.x - 3.5, y: pT.y - 3.5, width: 7, height: 7)),
+                                 with: .color(.orange))
+                    }
                 }
-                area.addLine(to: CGPoint(x: x(samples[samples.count - 1].time), y: size.height))
-                area.closeSubpath()
-                ctx.fill(area, with: .linearGradient(
-                    Gradient(colors: [.orange.opacity(0.35), .orange.opacity(0.02)]),
-                    startPoint: CGPoint(x: 0, y: 0),
-                    endPoint: CGPoint(x: 0, y: size.height)))
-                ctx.stroke(line, with: .color(.orange),
-                           style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                .contentShape(Rectangle())
+                .onContinuousHover(coordinateSpace: .local) { phase in
+                    switch phase {
+                    case .active(let p):
+                        hoverX = p.x
+                        hoverSample = nearest(toX: p.x, width: geo.size.width)
+                    case .ended:
+                        hoverX = nil; hoverSample = nil
+                    }
+                }
             }
-            .frame(height: 72)
+            .frame(height: 76)
             .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.04)))
-            .overlay(alignment: .topTrailing) {
-                Text("\(Int(tHi))°").font(.system(size: 9)).foregroundStyle(.secondary).padding(5)
-            }
-            .overlay(alignment: .bottomTrailing) {
-                Text("\(Int(tLo))°").font(.system(size: 9)).foregroundStyle(.secondary).padding(5)
-            }
+        }
+    }
+
+    /// Amostra mais proxima da posicao x do cursor.
+    private func nearest(toX px: CGFloat, width: CGFloat) -> FanSample? {
+        guard width > 0, !samples.isEmpty else { return nil }
+        let t0 = Date().addingTimeInterval(-window)
+        let frac = Double(max(0, min(1, px / width)))
+        let target = t0.addingTimeInterval(window * frac)
+        return samples.min {
+            abs($0.time.timeIntervalSince(target)) < abs($1.time.timeIntervalSince(target))
         }
     }
 }
