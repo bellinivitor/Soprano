@@ -719,16 +719,27 @@ struct FanRow: View {
     }
 }
 
-// Grafico dos ultimos 10 min: temperatura (laranja) e rotacao (azul).
+// Grafico dos ultimos 10 min: temperatura (area laranja) e rotacao (linha azul).
 struct HistoryChart: View {
     let samples: [FanSample]
     let fanMin: Int
     let fanMax: Int
 
+    /// Escala adaptativa da temperatura: margem + span minimo p/ nao exagerar ruido.
+    private var tempRange: (lo: Double, hi: Double) {
+        let temps = samples.map(\.temp)
+        var lo = ((temps.min() ?? 40) - 4).rounded(.down)
+        var hi = ((temps.max() ?? 60) + 4).rounded(.up)
+        if hi - lo < 15 { let mid = (hi + lo) / 2; lo = mid - 7.5; hi = mid + 7.5 }
+        return (max(lo, 20), min(hi, 110))
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 12) {
-                Label("Temp", systemImage: "circle.fill").foregroundStyle(.orange)
+        let tLo = tempRange.lo, tHi = tempRange.hi
+
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 14) {
+                Label("Temperatura", systemImage: "circle.fill").foregroundStyle(.orange)
                 Label("Rotação", systemImage: "circle.fill").foregroundStyle(.blue)
                 Spacer()
                 Text("últimos 10 min").foregroundStyle(.secondary)
@@ -736,30 +747,61 @@ struct HistoryChart: View {
             .font(.caption2)
 
             Canvas { ctx, size in
-                guard samples.count > 1 else { return }
                 let w = FanController.historyWindow
                 let t0 = Date().addingTimeInterval(-w)
                 func x(_ d: Date) -> CGFloat { CGFloat(max(0, d.timeIntervalSince(t0)) / w) * size.width }
                 func yTemp(_ v: Double) -> CGFloat {
-                    let lo = 30.0, hi = 105.0
-                    return size.height * (1 - CGFloat((min(max(v, lo), hi) - lo) / (hi - lo)))
+                    size.height * (1 - CGFloat((min(max(v, tLo), tHi) - tLo) / (tHi - tLo)))
                 }
                 func yRpm(_ v: Int) -> CGFloat {
                     let lo = Double(fanMin), hi = Double(max(fanMax, fanMin + 1))
                     return size.height * (1 - CGFloat((min(max(Double(v), lo), hi) - lo) / (hi - lo)))
                 }
-                var tp = Path(), rp = Path()
-                for (i, s) in samples.enumerated() {
-                    let pt = CGPoint(x: x(s.time), y: yTemp(s.temp))
-                    let pr = CGPoint(x: x(s.time), y: yRpm(s.rpm))
-                    if i == 0 { tp.move(to: pt); rp.move(to: pr) }
-                    else { tp.addLine(to: pt); rp.addLine(to: pr) }
+
+                // grade horizontal sutil
+                for f: CGFloat in [0, 0.5, 1] {
+                    var g = Path()
+                    g.move(to: CGPoint(x: 0, y: size.height * f))
+                    g.addLine(to: CGPoint(x: size.width, y: size.height * f))
+                    ctx.stroke(g, with: .color(.primary.opacity(0.06)), lineWidth: 1)
                 }
-                ctx.stroke(rp, with: .color(.blue.opacity(0.8)), lineWidth: 1.5)
-                ctx.stroke(tp, with: .color(.orange), lineWidth: 1.5)
+
+                guard samples.count > 1 else { return }
+
+                // rotacao: linha fina de apoio
+                var rp = Path()
+                for (i, s) in samples.enumerated() {
+                    let p = CGPoint(x: x(s.time), y: yRpm(s.rpm))
+                    if i == 0 { rp.move(to: p) } else { rp.addLine(to: p) }
+                }
+                ctx.stroke(rp, with: .color(.blue.opacity(0.55)),
+                           style: StrokeStyle(lineWidth: 1.2, lineJoin: .round))
+
+                // temperatura: area com gradiente + linha (protagonista)
+                var line = Path(), area = Path()
+                area.move(to: CGPoint(x: x(samples[0].time), y: size.height))
+                for (i, s) in samples.enumerated() {
+                    let p = CGPoint(x: x(s.time), y: yTemp(s.temp))
+                    if i == 0 { line.move(to: p) } else { line.addLine(to: p) }
+                    area.addLine(to: p)
+                }
+                area.addLine(to: CGPoint(x: x(samples[samples.count - 1].time), y: size.height))
+                area.closeSubpath()
+                ctx.fill(area, with: .linearGradient(
+                    Gradient(colors: [.orange.opacity(0.35), .orange.opacity(0.02)]),
+                    startPoint: CGPoint(x: 0, y: 0),
+                    endPoint: CGPoint(x: 0, y: size.height)))
+                ctx.stroke(line, with: .color(.orange),
+                           style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
             }
-            .frame(height: 56)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))
+            .frame(height: 72)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.04)))
+            .overlay(alignment: .topTrailing) {
+                Text("\(Int(tHi))°").font(.system(size: 9)).foregroundStyle(.secondary).padding(5)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                Text("\(Int(tLo))°").font(.system(size: 9)).foregroundStyle(.secondary).padding(5)
+            }
         }
     }
 }
