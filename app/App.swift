@@ -771,9 +771,10 @@ struct HistoryChart: View {
                         var g = Path()
                         g.move(to: CGPoint(x: 0, y: yy)); g.addLine(to: CGPoint(x: size.width, y: yy))
                         ctx.stroke(g, with: .color(.primary.opacity(0.06)), lineWidth: 1)
-                        let labelY = min(max(yy - 6, 7), size.height - 7)   // nao corta nas bordas
+                        // rotulo centrado na propria linha, travado dentro da area
+                        let labelY = min(max(yy, 8), size.height - 8)
                         ctx.draw(Text("\(mark)°").font(.system(size: 8)).foregroundStyle(.secondary),
-                                 at: CGPoint(x: 14, y: labelY))
+                                 at: CGPoint(x: 16, y: labelY), anchor: .center)
                     }
 
                     guard samples.count > 1 else { return }
