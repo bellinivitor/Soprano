@@ -8,10 +8,10 @@ import UniformTypeIdentifiers
 // Escrita:  chama /usr/local/bin/smcfan via `sudo -n` (regra NOPASSWD do install.sh).
 
 let smcfanPath = "/usr/local/bin/smcfan"
-let appVersion = "0.1 beta"
+let appVersion = "0.1.1 beta"
 
 // Checagem de atualizacao via GitHub.
-let currentTag = "v0.1-beta"
+let currentTag = "v0.1.1-beta"
 let repoTagsURL = "https://api.github.com/repos/bellinivitor/Soprano/tags"
 let repoReleasesURL = "https://github.com/bellinivitor/Soprano/releases"
 
