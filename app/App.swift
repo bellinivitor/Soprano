@@ -52,8 +52,9 @@ func carbonModifiers(from flags: NSEvent.ModifierFlags) -> UInt32 {
     return m
 }
 
-/// Texto amigavel de um atalho (ex.: "⌃⌥⌘F").
+/// Texto amigavel de um atalho (ex.: "⌃⌥⌘F"), ou "Nenhum" se vazio.
 func hotKeyLabel(keyCode: UInt32, carbonMods: UInt32) -> String {
+    if keyCode == 0 && carbonMods == 0 { return "Nenhum" }
     var s = ""
     if carbonMods & UInt32(controlKey) != 0 { s += "⌃" }
     if carbonMods & UInt32(optionKey)  != 0 { s += "⌥" }
@@ -197,9 +198,9 @@ final class FanController: ObservableObject {
     @Published var updateTag: String?            // tag mais recente no GitHub, se != atual
     @Published var history: [FanSample] = []     // amostras dos ultimos ~10 min
 
-    // Atalho global (padrao: Ctrl+Opt+Cmd+F) que alterna 100% <-> Automatico.
-    @Published var hotKeyCode: UInt32 = 3         // 'F'
-    @Published var hotKeyMods: UInt32 = UInt32(controlKey | optionKey | cmdKey)
+    // Atalho global que alterna 100% <-> Automatico. Vazio por padrao (0/0).
+    @Published var hotKeyCode: UInt32 = 0
+    @Published var hotKeyMods: UInt32 = 0
     private let hotKey = GlobalHotKey()
     static let historyWindow: TimeInterval = 600  // 10 minutos
 
@@ -776,9 +777,12 @@ struct HotKeyRecorderView: View {
                 .frame(minWidth: 90, alignment: .leading)
                 .padding(.horizontal, 8).padding(.vertical, 4)
                 .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.06)))
-            Button(recording ? "Pressione as teclas…" : "Alterar") { toggle() }
+            Button(recording ? "Pressione as teclas…" : "Definir") { toggle() }
             if recording {
                 Button("Cancelar") { stop() }.buttonStyle(.borderless)
+            } else if controller.hotKeyCode != 0 || controller.hotKeyMods != 0 {
+                Button("Remover") { controller.updateHotKey(keyCode: 0, mods: 0) }
+                    .buttonStyle(.borderless)
             }
         }
     }
@@ -947,7 +951,7 @@ struct ConfigWindow: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 520, height: 460)
+        .frame(width: 520, height: 560)
     }
 }
 
@@ -1014,7 +1018,7 @@ struct MenuBarPrefsTab: View {
     @ObservedObject var controller: FanController
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("Barra de menu").font(.title2).bold()
             Text("Escolha o que aparece ao lado do ícone da ventoinha.")
                 .font(.caption).foregroundStyle(.secondary)
