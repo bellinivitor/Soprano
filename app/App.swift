@@ -433,9 +433,13 @@ final class FanController: ObservableObject {
         }
     }
 
+    private var tickCount = 0
     private func tick() {
         refresh()
-        checkConflicts()
+        // Detectar outro controlador varre todos os apps abertos: faz a cada ~5
+        // ciclos (nao precisa de 2s de granularidade) para poupar CPU.
+        if tickCount % 5 == 0 { checkConflicts() }
+        tickCount += 1
         Task {
             let t = await tempReader.average()
             await MainActor.run {
@@ -471,16 +475,15 @@ final class FanController: ObservableObject {
             lastAppRpm = nil
         }
 
-        let running = Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier })
-        // Apps dispensados que ja fecharam saem da lista (reabrir volta a valer).
-        dismissedRules = dismissedRules.intersection(running)
-
-        // 1) Regra por aplicativo tem prioridade enquanto o app roda (se habilitado
-        //    e nao dispensada manualmente). Entre varias, vale a de maior %.
-        let candidate = rulesEnabled
-            ? appRules.filter { running.contains($0.bundleID) && !dismissedRules.contains($0.bundleID) }
-                      .max { $0.percent < $1.percent }
-            : nil
+        // 1) Regra por aplicativo (so varre os apps abertos se houver regras).
+        var candidate: AppRule? = nil
+        if rulesEnabled && !appRules.isEmpty {
+            let running = Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier })
+            dismissedRules = dismissedRules.intersection(running)
+            candidate = appRules
+                .filter { running.contains($0.bundleID) && !dismissedRules.contains($0.bundleID) }
+                .max { $0.percent < $1.percent }
+        }
 
         if let rule = candidate {
             let rpm = min(max(percentToRpm(rule.percent, fan), fan.min), fan.max)
@@ -507,7 +510,15 @@ final class FanController: ObservableObject {
         if autoCurveEnabled {
             applyCurveIfNeeded()                 // Curva: pontos do usuario
         } else if let mt = manualTarget {
-            run(["set", "\(fan.id)", "\(mt)"])   // Manual: keep-alive
+            // Manual: so escreve quando o alvo muda ou o modo caiu (evita spawn
+            // de processo a cada ciclo — economia de energia).
+            if lastAutoRpm != mt || !fan.forced {
+                lastAutoRpm = mt
+                run(["set", "\(fan.id)", "\(mt)"])
+                if let i = fans.firstIndex(where: { $0.id == fan.id }) {
+                    fans[i].target = mt; fans[i].forced = true
+                }
+            }
         } else {
             applyAutoCurve(fan)                  // Automatico: curva segura do app
         }
