@@ -649,27 +649,37 @@ final class FanController: ObservableObject {
         }
     }
 
+    // Fila serial para as escritas privilegiadas. Precisa rodar FORA da main
+    // thread: Process.waitUntilExit() bombeia o run loop da thread chamadora e,
+    // na main, isso reentra no ciclo de display do AppKit e trava um core
+    // inteiro fazendo layout (era a causa do consumo de ~100% de CPU). Serial
+    // para as escritas nao se atropelarem.
+    private let writeQueue = DispatchQueue(label: "com.bellini.soprano.smcwrite", qos: .utility)
+
     /// Executa o smcfan com privilegio (sudo -n, sem senha via regra sudoers).
+    /// Sempre fora da main thread (ver `writeQueue`).
     private func run(_ smcArgs: [String]) {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
-        p.arguments = ["-n", smcfanPath] + smcArgs
-        let err = Pipe()
-        p.standardError = err
-        p.standardOutput = Pipe()
-        do {
-            try p.run()
-            p.waitUntilExit()
-            if p.terminationStatus != 0 {
-                let msg = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-                lastError = msg.isEmpty
-                    ? "escrita falhou (rode o install.sh para liberar o sudo sem senha)"
-                    : msg.trimmingCharacters(in: .whitespacesAndNewlines)
-            } else {
-                lastError = nil
+        writeQueue.async { [weak self] in
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
+            p.arguments = ["-n", smcfanPath] + smcArgs
+            let err = Pipe()
+            p.standardError = err
+            p.standardOutput = Pipe()
+            var message: String? = nil
+            do {
+                try p.run()
+                p.waitUntilExit()
+                if p.terminationStatus != 0 {
+                    let msg = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                    message = msg.isEmpty
+                        ? "escrita falhou (rode o install.sh para liberar o sudo sem senha)"
+                        : msg.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            } catch {
+                message = "não foi possível executar o smcfan: \(error.localizedDescription)"
             }
-        } catch {
-            lastError = "não foi possível executar o smcfan: \(error.localizedDescription)"
+            Task { @MainActor in self?.lastError = message }
         }
     }
 }
