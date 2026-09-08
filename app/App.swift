@@ -85,10 +85,10 @@ func keyName(for keyCode: UInt32) -> String {
 // Escrita:  chama /usr/local/bin/smcfan via `sudo -n` (regra NOPASSWD do install.sh).
 
 let smcfanPath = "/usr/local/bin/smcfan"
-let appVersion = "0.2.1 beta"
+let appVersion = "0.2.2 beta"
 
 // Checagem de atualizacao via GitHub.
-let currentTag = "v0.2.1-beta"
+let currentTag = "v0.2.2-beta"
 let repoTagsURL = "https://api.github.com/repos/bellinivitor/Soprano/tags"
 let repoReleasesURL = "https://github.com/bellinivitor/Soprano/releases"
 
@@ -114,7 +114,7 @@ func isNewerVersion(_ a: String, than b: String) -> Bool {
 
 // MARK: - Modelo de um fan
 
-struct Fan: Identifiable {
+struct Fan: Identifiable, Equatable {
     let id: Int
     var actual: Int
     var min: Int
@@ -185,6 +185,16 @@ struct AppRule: Codable, Identifiable {
     var id: String { bundleID }
 }
 
+// MARK: - Texto da barra de menu (observavel isolado)
+
+/// Modelo minimo do texto exibido ao lado do icone. Fica separado do
+/// FanController de proposito: assim o item da barra so re-renderiza (e
+/// relayouta) quando a string realmente muda, e nao a cada tick de leitura.
+@MainActor
+final class MenuBarModel: ObservableObject {
+    @Published var text: String = ""
+}
+
 // MARK: - ViewModel
 
 @MainActor
@@ -218,10 +228,10 @@ final class FanController: ObservableObject {
 
     // Preferencias de exibicao na barra de menu (o icone fica sempre).
     @Published var showRpmInMenuBar: Bool = true {
-        didSet { defaults.set(showRpmInMenuBar, forKey: "showRpm") }
+        didSet { defaults.set(showRpmInMenuBar, forKey: "showRpm"); updateMenuBar() }
     }
     @Published var showTempInMenuBar: Bool = true {
-        didSet { defaults.set(showTempInMenuBar, forKey: "showTemp") }
+        didSet { defaults.set(showTempInMenuBar, forKey: "showTemp"); updateMenuBar() }
     }
     @Published var showHistoryChart: Bool = true {
         didSet { defaults.set(showHistoryChart, forKey: "showHistory") }
@@ -240,12 +250,18 @@ final class FanController: ObservableObject {
         }
     }
 
-    /// Texto ao lado do icone na barra (respeita as preferencias).
-    var menuBarText: String {
+    /// Texto ao lado do icone na barra, isolado num observavel proprio.
+    let menuBar = MenuBarModel()
+
+    /// Recalcula o texto da barra e publica apenas quando ele muda de fato
+    /// (a temperatura e arredondada, entao 45,2 e 45,4 dao a mesma string e
+    /// nao geram re-render).
+    private func updateMenuBar() {
         var parts: [String] = []
         if showRpmInMenuBar, let a = fans.first?.actual, a > 0 { parts.append("\(a)") }
         if showTempInMenuBar { parts.append(tempLabel(cpuTemp)) }
-        return parts.joined(separator: " · ")
+        let s = parts.joined(separator: " · ")
+        if menuBar.text != s { menuBar.text = s }
     }
 
     @Published var autoCurveEnabled: Bool {
@@ -443,7 +459,8 @@ final class FanController: ObservableObject {
         Task {
             let t = await tempReader.average()
             await MainActor.run {
-                self.cpuTemp = t
+                if self.cpuTemp != t { self.cpuTemp = t }
+                self.updateMenuBar()
                 self.recordSample()
                 self.applyControl()
             }
@@ -555,7 +572,8 @@ final class FanController: ObservableObject {
                               target: g("Tg") ?? mn,
                               forced: md == 1))
         }
-        fans = result
+        if result != fans { fans = result }   // evita objectWillChange redundante
+        updateMenuBar()
     }
 
     // MARK: curva automatica
@@ -908,6 +926,15 @@ struct HotKeyRecorderView: View {
     private func stop() {
         recording = false
         if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
+    }
+}
+
+/// Texto ao lado do icone na barra. Observa SO o MenuBarModel, entao so
+/// re-renderiza (e relayouta o item da barra) quando a string muda.
+struct MenuBarText: View {
+    @ObservedObject var model: MenuBarModel
+    var body: some View {
+        if !model.text.isEmpty { Text(model.text) }
     }
 }
 
@@ -1379,14 +1406,17 @@ struct AppRulesTab: View {
 
 @main
 struct SopranoApp: App {
-    @StateObject private var controller = FanController()
+    // @State (nao @StateObject) de proposito: o App NAO precisa re-renderizar a
+    // cada tick do controller. Quem observa sao as subviews (MenuContent, abas)
+    // e o MenuBarText — este ultimo so muda quando a string da barra muda.
+    @State private var controller = FanController()
 
     var body: some Scene {
         MenuBarExtra {
             MenuContent(controller: controller)
         } label: {
             Image(systemName: "fanblades.fill")
-            if !controller.menuBarText.isEmpty { Text(controller.menuBarText) }
+            MenuBarText(model: controller.menuBar)
         }
         .menuBarExtraStyle(.window)
 
