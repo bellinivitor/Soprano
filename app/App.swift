@@ -85,10 +85,10 @@ func keyName(for keyCode: UInt32) -> String {
 // Escrita:  chama /usr/local/bin/smcfan via `sudo -n` (regra NOPASSWD do install.sh).
 
 let smcfanPath = "/usr/local/bin/smcfan"
-let appVersion = "0.2.2 beta"
+let appVersion = "0.2.3 beta"
 
 // Checagem de atualizacao via GitHub.
-let currentTag = "v0.2.2-beta"
+let currentTag = "v0.2.3-beta"
 let repoTagsURL = "https://api.github.com/repos/bellinivitor/Soprano/tags"
 let repoReleasesURL = "https://github.com/bellinivitor/Soprano/releases"
 
@@ -776,6 +776,10 @@ struct HistoryChart: View {
     private let tHi = 105.0
     private let window = FanController.historyWindow
 
+    /// Instante que ancora a borda direita do grafico. Usa a ultima amostra
+    /// para que a renderizacao nao dependa do relogio (ver comentario no Canvas).
+    private var anchorEnd: Date { samples.last?.time ?? Date() }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 14) {
@@ -793,7 +797,12 @@ struct HistoryChart: View {
 
             GeometryReader { geo in
                 Canvas { ctx, size in
-                    let t0 = Date().addingTimeInterval(-window)
+                    // Ancora o eixo de tempo na ULTIMA amostra (nao em Date()):
+                    // assim o desenho e uma funcao pura de `samples` e so muda
+                    // quando chega amostra nova. Ancorar em Date() tornava cada
+                    // frame diferente do anterior, o que fazia o CoreAnimation
+                    // redesenhar sem parar (loop de layout = ~100% de CPU).
+                    let t0 = anchorEnd.addingTimeInterval(-window)
                     func x(_ d: Date) -> CGFloat { CGFloat(max(0, d.timeIntervalSince(t0)) / window) * size.width }
                     func yTemp(_ v: Double) -> CGFloat {
                         size.height * (1 - CGFloat((min(max(v, tLo), tHi) - tLo) / (tHi - tLo)))
@@ -880,7 +889,7 @@ struct HistoryChart: View {
     /// Amostra mais proxima da posicao x do cursor.
     private func nearest(toX px: CGFloat, width: CGFloat) -> FanSample? {
         guard width > 0, !samples.isEmpty else { return nil }
-        let t0 = Date().addingTimeInterval(-window)
+        let t0 = anchorEnd.addingTimeInterval(-window)
         let frac = Double(max(0, min(1, px / width)))
         let target = t0.addingTimeInterval(window * frac)
         return samples.min {
