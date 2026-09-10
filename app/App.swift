@@ -85,10 +85,10 @@ func keyName(for keyCode: UInt32) -> String {
 // Escrita:  chama /usr/local/bin/smcfan via `sudo -n` (regra NOPASSWD do install.sh).
 
 let smcfanPath = "/usr/local/bin/smcfan"
-let appVersion = "0.2.5 beta"
+let appVersion = "0.2.6 beta"
 
 // Checagem de atualizacao via GitHub.
-let currentTag = "v0.2.5-beta"
+let currentTag = "v0.2.6-beta"
 let repoTagsURL = "https://api.github.com/repos/bellinivitor/Soprano/tags"
 let repoReleasesURL = "https://github.com/bellinivitor/Soprano/releases"
 
@@ -958,6 +958,24 @@ struct MenuContent: View {
     @State private var popoverVisible = false
 
     var body: some View {
+        // Gate no CORPO INTEIRO (nao so no grafico): quando o popover esta
+        // fechado, `menuBody` sai da arvore e nada aqui le o controller, entao
+        // os publishes por tick (temp/rpm/history a cada 2s) NAO re-renderizam
+        // este conteudo. Sem isso, o body rodava 24/7 e a maquina de observacao
+        // do SwiftUI vazava alguns ObservationRegistrar por tick (dezenas de
+        // milhares ao longo do dia -> CPU subindo).
+        Group {
+            if popoverVisible {
+                menuBody
+            } else {
+                Color.clear.frame(width: 320, height: 1)
+            }
+        }
+        .onAppear { popoverVisible = true }
+        .onDisappear { popoverVisible = false }
+    }
+
+    private var menuBody: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Soprano").font(.title3).bold()
@@ -976,7 +994,7 @@ struct MenuContent: View {
                 }
             }
 
-            if popoverVisible, controller.showHistoryChart,
+            if controller.showHistoryChart,
                controller.history.count > 1, let fan = controller.fans.first {
                 HistoryChart(samples: controller.history, fanMin: fan.min, fanMax: fan.max)
             }
@@ -1052,8 +1070,6 @@ struct MenuContent: View {
         }
         .padding(14)
         .frame(width: 320)
-        .onAppear { popoverVisible = true }
-        .onDisappear { popoverVisible = false }
     }
 
     private func tempColor(_ t: Double?) -> Color {
