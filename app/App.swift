@@ -85,10 +85,10 @@ func keyName(for keyCode: UInt32) -> String {
 // Escrita:  chama /usr/local/bin/smcfan via `sudo -n` (regra NOPASSWD do install.sh).
 
 let smcfanPath = "/usr/local/bin/smcfan"
-let appVersion = "0.2.7 beta"
+let appVersion = "0.2.8 beta"
 
 // Checagem de atualizacao via GitHub.
-let currentTag = "v0.2.7-beta"
+let currentTag = "v0.2.8-beta"
 let repoTagsURL = "https://api.github.com/repos/bellinivitor/Soprano/tags"
 let repoReleasesURL = "https://github.com/bellinivitor/Soprano/releases"
 
@@ -732,6 +732,20 @@ struct FanRow: View {
                 set: { controller.setTarget(Int($0), forFan: fan.id) })
     }
 
+    /// Linha de status abaixo do slider. Com a ventoinha em repouso (Mac frio),
+    /// deixa claro que o alvo esta PENDENTE — a firmware so deixa assumir o
+    /// controle quando ela comecar a girar; nao mente "Forçado".
+    private func statusText(_ fan: Fan) -> String {
+        if controller.fanResting && fan.actual == 0 {
+            return "Aguardando a ventoinha ligar · alvo \(fan.target) rpm"
+        }
+        switch controller.mode {
+        case .curve:  return "Curva: alvo \(fan.target) rpm"
+        case .manual: return "Forçado: \(fan.target) rpm"
+        case .system: return "Automático (curva do app)"
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -756,8 +770,7 @@ struct FanRow: View {
             .padding(.top, 6)   // respiro entre o cabecalho e a barra
 
             HStack {
-                Text(controller.mode == .curve ? "Curva: alvo \(fan.target) rpm"
-                     : (controller.mode == .manual ? "Forçado: \(fan.target) rpm" : "Automático (curva do app)"))
+                Text(statusText(fan))
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
             }
