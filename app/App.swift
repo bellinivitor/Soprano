@@ -85,10 +85,10 @@ func keyName(for keyCode: UInt32) -> String {
 // Escrita:  chama /usr/local/bin/smcfan via `sudo -n` (regra NOPASSWD do install.sh).
 
 let smcfanPath = "/usr/local/bin/smcfan"
-let appVersion = "0.2.4 beta"
+let appVersion = "0.2.5 beta"
 
 // Checagem de atualizacao via GitHub.
-let currentTag = "v0.2.4-beta"
+let currentTag = "v0.2.5-beta"
 let repoTagsURL = "https://api.github.com/repos/bellinivitor/Soprano/tags"
 let repoReleasesURL = "https://github.com/bellinivitor/Soprano/releases"
 
@@ -1080,8 +1080,28 @@ enum ConfigTab: String, CaseIterable, Identifiable {
 struct ConfigWindow: View {
     @ObservedObject var controller: FanController
     @State private var tab: ConfigTab = .curva
+    // O `Window` singleton fica vivo mesmo fechado: como observa o controller
+    // (que publica a cada tick), o body seria re-avaliado 24/7 com a janela
+    // fechada, e o Picker segmentado com .tag() vaza uma TagIndexProjection a
+    // cada rebuild — dezenas de milhares acumulavam ao longo das horas,
+    // deixando o ObservationCenter do SwiftUI cada vez mais caro (CPU subindo).
+    // Este gate so monta o conteudo enquanto a janela esta realmente visivel.
+    @State private var visible = false
 
     var body: some View {
+        Group {
+            if visible {
+                content
+            } else {
+                Color.clear
+            }
+        }
+        .frame(width: 560, height: 560)
+        .onAppear { visible = true }
+        .onDisappear { visible = false }
+    }
+
+    private var content: some View {
         VStack(spacing: 0) {
             // Segmented fixo no topo — sempre visivel, sem menu escondido.
             Picker("", selection: $tab) {
@@ -1105,7 +1125,6 @@ struct ConfigWindow: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 560, height: 560)
     }
 }
 
