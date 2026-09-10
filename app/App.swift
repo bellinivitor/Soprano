@@ -85,10 +85,10 @@ func keyName(for keyCode: UInt32) -> String {
 // Escrita:  chama /usr/local/bin/smcfan via `sudo -n` (regra NOPASSWD do install.sh).
 
 let smcfanPath = "/usr/local/bin/smcfan"
-let appVersion = "0.2.6 beta"
+let appVersion = "0.2.7 beta"
 
 // Checagem de atualizacao via GitHub.
-let currentTag = "v0.2.6-beta"
+let currentTag = "v0.2.7-beta"
 let repoTagsURL = "https://api.github.com/repos/bellinivitor/Soprano/tags"
 let repoReleasesURL = "https://github.com/bellinivitor/Soprano/releases"
 
@@ -202,6 +202,10 @@ final class FanController: ObservableObject {
     @Published var fans: [Fan] = []
     @Published var cpuTemp: Double?
     @Published var lastError: String?
+    // Estado informativo (nao-erro): a ventoinha esta em repouso profundo
+    // (mode=3, Mac frio) e a firmware so deixa assumir o controle com ela
+    // girando. Mostrado em cinza, sem alarme de erro.
+    @Published var fanResting: Bool = false
     @Published var conflictWarning: String?
     @Published var activeAppRuleName: String?   // regra por app em vigor agora
     @Published var safetyActive = false          // protecao termica forcando o maximo
@@ -685,10 +689,15 @@ final class FanController: ObservableObject {
             p.standardError = err
             p.standardOutput = Pipe()
             var message: String? = nil
+            var resting = false
             do {
                 try p.run()
                 p.waitUntilExit()
-                if p.terminationStatus != 0 {
+                // Codigo 3 = ventoinha em repouso (mode=3): estado normal com o
+                // Mac frio, nao um erro. Trata como aviso neutro.
+                if p.terminationStatus == 3 {
+                    resting = true
+                } else if p.terminationStatus != 0 {
                     let msg = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
                     message = msg.isEmpty
                         ? "escrita falhou (rode o install.sh para liberar o sudo sem senha)"
@@ -697,7 +706,10 @@ final class FanController: ObservableObject {
             } catch {
                 message = "não foi possível executar o smcfan: \(error.localizedDescription)"
             }
-            Task { @MainActor in self?.lastError = message }
+            Task { @MainActor in
+                self?.lastError = message
+                self?.fanResting = resting
+            }
         }
     }
 }
@@ -1033,6 +1045,16 @@ struct MenuContent: View {
                 Label(warn, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption).foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if controller.fanResting {
+                HStack(spacing: 6) {
+                    Image(systemName: "moon.zzz.fill")
+                    Text("Ventoinha em repouso (Mac frio). O controle assume assim que ela começar a girar.")
+                    Spacer()
+                }
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             }
 
             if let err = controller.lastError {

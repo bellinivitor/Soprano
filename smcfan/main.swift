@@ -59,7 +59,7 @@ func cmdSet(_ smc: SMC, index: Int, rpm: Int) {
             // A firmware recusa assumir o manual quando o fan esta em repouso
             // profundo (mode=3, fan desligado a frio). Sinaliza com codigo 3.
             if mode == 3 {
-                FileHandle.standardError.write(Data("erro: fan em repouso (mode=3): só dá pra assumir com o fan girando\n".utf8))
+                FileHandle.standardError.write(Data("fan em repouso (mode=3): o controle assume quando a ventoinha estiver girando\n".utf8))
                 exit(3)
             }
             fail("não foi possível forçar o modo do fan \(index): \(error)")
