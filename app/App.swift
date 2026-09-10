@@ -85,10 +85,10 @@ func keyName(for keyCode: UInt32) -> String {
 // Escrita:  chama /usr/local/bin/smcfan via `sudo -n` (regra NOPASSWD do install.sh).
 
 let smcfanPath = "/usr/local/bin/smcfan"
-let appVersion = "0.2.3 beta"
+let appVersion = "0.2.4 beta"
 
 // Checagem de atualizacao via GitHub.
-let currentTag = "v0.2.3-beta"
+let currentTag = "v0.2.4-beta"
 let repoTagsURL = "https://api.github.com/repos/bellinivitor/Soprano/tags"
 let repoReleasesURL = "https://github.com/bellinivitor/Soprano/releases"
 
@@ -951,6 +951,12 @@ struct MenuContent: View {
     @ObservedObject var controller: FanController
     @Environment(\.openWindow) private var openWindow
 
+    // O MenuBarExtra(.window) mantem este conteudo VIVO mesmo com o popover
+    // fechado: sem este gate, o HistoryChart (Canvas) seria re-renderizado a
+    // cada tick 24/7, fora da tela, torrando CPU e vazando memoria devagar.
+    // onAppear/onDisappear seguem a abertura/fechamento do popover.
+    @State private var popoverVisible = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -970,7 +976,8 @@ struct MenuContent: View {
                 }
             }
 
-            if controller.showHistoryChart, controller.history.count > 1, let fan = controller.fans.first {
+            if popoverVisible, controller.showHistoryChart,
+               controller.history.count > 1, let fan = controller.fans.first {
                 HistoryChart(samples: controller.history, fanMin: fan.min, fanMax: fan.max)
             }
 
@@ -1045,6 +1052,8 @@ struct MenuContent: View {
         }
         .padding(14)
         .frame(width: 320)
+        .onAppear { popoverVisible = true }
+        .onDisappear { popoverVisible = false }
     }
 
     private func tempColor(_ t: Double?) -> Color {

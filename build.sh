@@ -27,8 +27,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleName</key>            <string>Soprano</string>
     <key>CFBundleDisplayName</key>     <string>Soprano</string>
     <key>CFBundleIdentifier</key>      <string>com.bellini.soprano</string>
-    <key>CFBundleVersion</key>         <string>0.2.3</string>
-    <key>CFBundleShortVersionString</key><string>0.2.3</string>
+    <key>CFBundleVersion</key>         <string>0.2.4</string>
+    <key>CFBundleShortVersionString</key><string>0.2.4</string>
     <key>CFBundleExecutable</key>      <string>Soprano</string>
     <key>CFBundleIconFile</key>        <string>AppIcon</string>
     <key>CFBundlePackageType</key>     <string>APPL</string>
